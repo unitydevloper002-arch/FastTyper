@@ -4,7 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using System.Text.RegularExpressions;
-using DG.Tweening; 
+using DG.Tweening;
 
 public enum GAMEMODE
 {
@@ -26,6 +26,8 @@ public class UIManager : MonoBehaviour
     public GameObject selectModeScreen;
     public GameObject selectTypeScreen;
     public GameObject gamePlayScreen;
+    public GameObject countdownScreen;
+    public GameObject gameOverScreen;
 
     [Header("Game State")]
     public GAMEMODE currentGameMode;
@@ -43,8 +45,8 @@ public class UIManager : MonoBehaviour
     public Transform wordItemParent;
     public Transform wordItemParentAI; // AI column parent
 
-	[Header("Animation Settings")]
-	public bool ignoreTimeScale = true; // If true, tweens ignore Time.timeScale
+    [Header("Animation Settings")]
+    public bool ignoreTimeScale = true; // If true, tweens ignore Time.timeScale
 
     [Header("Typing")]
     public TMP_InputField inputField;
@@ -56,9 +58,9 @@ public class UIManager : MonoBehaviour
     public TextMeshProUGUI aiScoreText;
     public int aiScore = 0;
 
-	[Header("AI Settings")]
-	public Vector2 easyDelayRange = new Vector2(1.8f, 2.8f); // seconds per word (slower)
-	public Vector2 hardDelayRange = new Vector2(1.2f, 2.0f); // seconds per word (still slower than before)
+    [Header("AI Settings")]
+    public Vector2 easyDelayRange = new Vector2(1.8f, 2.8f); // seconds per word (slower)
+    public Vector2 hardDelayRange = new Vector2(1.2f, 2.0f); // seconds per word (still slower than before)
 
     // Independent indices and shift locks for Player and AI
     private int visibleStartIndexPlayer = 0;
@@ -68,14 +70,7 @@ public class UIManager : MonoBehaviour
 
     void Start()
     {
-        CreateWordItem();
-        if (inputField != null)
-        {
-            inputField.onValueChanged.AddListener(OnTyping);
-        }
 
-        // Start AI loop when gameplay starts (optional to move into StartGame)
-        StartCoroutine(AILoop());
     }
 
     void Update()
@@ -92,10 +87,12 @@ public class UIManager : MonoBehaviour
                 timeRemaining = 0;
                 timerRunning = false;
                 Debug.Log("⏰ Timer Finish!");
+                GameOver();
             }
         }
 
-        // Space commit no longer needed; auto-commit is handled in OnTyping
+        RunFillImage();
+        RunGameFillImage();
     }
 
     public void StartGame()
@@ -103,8 +100,14 @@ public class UIManager : MonoBehaviour
         timeRemaining = 300f;
         timerRunning = true;
 
-        // Auto-fill allWords with 2000 random words based on difficulty
-        //PopulateAllWordsRandom(2000);
+        CreateWordItem();
+        if (inputField != null)
+        {
+            inputField.onValueChanged.AddListener(OnTyping);
+        }
+
+        // Start AI loop when gameplay starts (optional to move into StartGame)
+        StartCoroutine(AILoop());
     }
 
     void UpdateTimerDisplay(float timeToDisplay)
@@ -121,18 +124,20 @@ public class UIManager : MonoBehaviour
     {
         currentAITypes = GAMETYPE.Easy;
         selectTypeScreen.SetActive(false);
-        gamePlayScreen.SetActive(true);
 
-        StartGame();
+        IsCountDownStart = true;
+        countdownScreen.SetActive(true);
+        StartCoroutine(StartCountdown_Animation());
     }
 
     public void OnClickHard()
     {
         currentAITypes = GAMETYPE.Hard;
         selectTypeScreen.SetActive(false);
-        gamePlayScreen.SetActive(true);
 
-        StartGame();
+        IsCountDownStart = true;
+        countdownScreen.SetActive(true);
+        StartCoroutine(StartCountdown_Animation());
     }
 
     public void OnClickSinglePlayer()
@@ -151,18 +156,19 @@ public class UIManager : MonoBehaviour
 
     private void PopulateAllWordsRandom(int targetCount)
     {
-        allWords.Clear();
         for (int i = 0; i < targetCount; i++)
         {
             int length;
             if (currentAITypes == GAMETYPE.Easy)
             {
                 // 3..5 letters (max is exclusive)
+                Debug.Log(currentAITypes + "currentAITypes_1");
                 length = Random.Range(3, 6);
             }
             else
             {
                 // 5..8 letters (max is exclusive)
+                Debug.Log(currentAITypes + "currentAITypes_2");
                 length = Random.Range(5, 9);
             }
             allWords.Add(GenerateRandomWord(length));
@@ -182,6 +188,7 @@ public class UIManager : MonoBehaviour
 
     public void CreateWordItem()
     {
+         allWords.Clear();
         // Ensure we have words
         if (allWords == null || allWords.Count == 0)
         {
@@ -198,7 +205,7 @@ public class UIManager : MonoBehaviour
 
             // Animate scale to target for this slot
             Vector3 targetScale = GetTargetScaleForSlotIndex(i);
-			wordItem.transform.localScale = Vector3.one * 0.8f;
+            wordItem.transform.localScale = Vector3.one * 0.8f;
             wordItem.transform.DOScale(targetScale, 0.25f).SetEase(Ease.OutBack).SetUpdate(ignoreTimeScale);
 
             // Assign sequential word text: child i => allWords[visibleStartIndex + i]
@@ -223,17 +230,17 @@ public class UIManager : MonoBehaviour
                     aiItem.transform.GetChild(0).GetComponent<TextMeshProUGUI>().text = "";
                 }
             }
-		}
+        }
 
-		ApplyActiveMask();
+        ApplyActiveMask();
     }
 
     public void RepeatWordItem()
     {
-		GameObject wordItem = Instantiate(wordItemPrefab, wordItemParent);
+        GameObject wordItem = Instantiate(wordItemPrefab, wordItemParent);
         wordItem.transform.localPosition = positionOfWords[6];
         Vector3 targetScale = GetTargetScaleForSlotIndex(6);
-		wordItem.transform.localScale = Vector3.one * 0.8f;
+        wordItem.transform.localScale = Vector3.one * 0.8f;
         wordItem.transform.DOScale(targetScale, 0.25f).SetEase(Ease.OutBack).SetUpdate(ignoreTimeScale);
 
         // Assign word based on current visibleStartIndex and this child's index
@@ -241,7 +248,7 @@ public class UIManager : MonoBehaviour
         // Always set next word from model: start + index
         AssignWordForItem(wordItem, visibleStartIndexPlayer + childIndex);
 
-		ApplyActiveMask();
+        ApplyActiveMask();
     }
 
     public void RepeatWordItemAI()
@@ -315,18 +322,18 @@ public class UIManager : MonoBehaviour
         return Vector3.one * 0.8f;
     }
 
-	// Ensures items 0..4 are active, the remaining (e.g., 5 and 6) are inactive every time
-	private void ApplyActiveMask()
-	{
+    // Ensures items 0..4 are active, the remaining (e.g., 5 and 6) are inactive every time
+    private void ApplyActiveMask()
+    {
         for (int i = 0; i < wordItemParent.childCount; i++)
-		{
-			bool shouldBeActive = i < 5; // 0..4 true (1..5 as per user), others false
-			var child = wordItemParent.GetChild(i).gameObject;
-			if (child.activeSelf != shouldBeActive)
-			{
-				child.SetActive(shouldBeActive);
-			}
-		}
+        {
+            bool shouldBeActive = i < 5; // 0..4 true (1..5 as per user), others false
+            var child = wordItemParent.GetChild(i).gameObject;
+            if (child.activeSelf != shouldBeActive)
+            {
+                child.SetActive(shouldBeActive);
+            }
+        }
 
         if (wordItemParentAI != null)
         {
@@ -340,7 +347,7 @@ public class UIManager : MonoBehaviour
                 }
             }
         }
-	}
+    }
 
     // Typing logic
     private void OnTyping(string value)
@@ -465,13 +472,99 @@ public class UIManager : MonoBehaviour
         isPlayerShifting = false;
     }
 
+    private void GameOver()
+    {
+        // Stop the game
+        timerRunning = false;
+
+        // Hide gameplay screen and show game over screen
+        if (gamePlayScreen != null)
+            gamePlayScreen.SetActive(false);
+        if (gameOverScreen != null)
+            gameOverScreen.SetActive(true);
+
+        // Stop AI loop
+        StopAllCoroutines();
+
+        // Clear input field
+        if (inputField != null)
+        {
+            inputField.onValueChanged.RemoveListener(OnTyping);
+            inputField.text = string.Empty;
+        }
+    }
+
+    public void RestartGame()
+    {
+        // Reset scores
+        totalScore = 0;
+        aiScore = 0;
+        if (scoreText != null)
+            scoreText.text = "0";
+        if (aiScoreText != null)
+            aiScoreText.text = "0";
+
+        // Reset timer
+        timeRemaining = 300f;
+        timerRunning = false;
+
+        // Clear all word items
+        ClearAllWordItems();
+
+        // Hide game over screen and show mode selection
+        if (gameOverScreen != null)
+            gameOverScreen.SetActive(false);
+        if (selectModeScreen != null)
+            selectModeScreen.SetActive(true);
+
+        // Reset game state
+        currentWordFailed = false;
+        visibleStartIndexPlayer = 0;
+        visibleStartIndexAI = 0;
+        isPlayerShifting = false;
+        isAIShifting = false;
+
+        //Reset FillImage
+        IsCountDownStart = false;
+        countFillImage.fillAmount = 0;
+
+        IsGameSliderStart = false;
+        gameFillImage.fillAmount = 0;
+        gameFillImage_AI.fillAmount = 0;
+
+        countdownText.text = "3";
+        countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 0;
+        countdownText.gameObject.transform.localScale = Vector3.zero;
+    }
+
+    private void ClearAllWordItems()
+    {
+        // Clear player word items
+        if (wordItemParent != null)
+        {
+            for (int i = wordItemParent.childCount - 1; i >= 0; i--)
+            {
+                Destroy(wordItemParent.GetChild(i).gameObject);
+            }
+        }
+
+        // Clear AI word items
+        if (wordItemParentAI != null)
+        {
+            for (int i = wordItemParentAI.childCount - 1; i >= 0; i--)
+            {
+                Destroy(wordItemParentAI.GetChild(i).gameObject);
+            }
+        }
+    }
+
     private void AddScore(int delta)
     {
         totalScore += delta;
         if (totalScore < 0) totalScore = 0;
         if (scoreText != null)
-    {
-        scoreText.text = totalScore.ToString();
+        {
+            scoreText.text = totalScore.ToString();
         }
     }
 
@@ -595,5 +688,95 @@ public class UIManager : MonoBehaviour
         yield return null;
         isAIShifting = false;
     }
+
+    #region GAMEPLAY_SLIDER
+
+    public Image gameFillImage;
+    public Image gameFillImage_AI;
+    private bool IsGameSliderStart = false;
+
+    public void RunGameFillImage()
+    {
+        if (IsGameSliderStart)
+        {
+            if (gameFillImage.fillAmount < 1)
+            {
+                float speed = 1f / 300f;
+                gameFillImage.fillAmount += Time.deltaTime * speed;
+                gameFillImage_AI.fillAmount += Time.deltaTime * speed;
+            }
+            else
+            {
+                IsGameSliderStart = false;
+                gameFillImage.fillAmount = 0;
+                gameFillImage_AI.fillAmount = 0;
+            }
+        }
+    }
+
+    #endregion
+
+
+    #region COUNTDOWN
+
+    [Header("Countdown")]
+    public TextMeshProUGUI countdownText;
+    public Image countFillImage;
+    private bool IsCountDownStart = false;
+
+    public IEnumerator StartCountdown_Animation()
+    {
+        yield return new WaitForSeconds(0.5f);
+        countdownText.text = "3";
+        countdownText.gameObject.GetComponent<CanvasGroup>().DOFade(1, 1f);
+        countdownText.gameObject.transform.DOScale(Vector3.one, 1f).OnComplete(() =>
+        {
+            countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 0;
+            countdownText.gameObject.transform.localScale = Vector3.zero;
+            countdownText.text = "2";
+
+            countdownText.gameObject.GetComponent<CanvasGroup>().DOFade(1, 1f);
+            countdownText.gameObject.transform.DOScale(Vector3.one, 1f).OnComplete(() =>
+            {
+                countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 0;
+                countdownText.gameObject.transform.localScale = Vector3.zero;
+                countdownText.text = "1";
+
+                countdownText.gameObject.GetComponent<CanvasGroup>().DOFade(1, 1f);
+                countdownText.gameObject.transform.DOScale(Vector3.one, 1f).OnComplete(() =>
+                {
+                    countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 0;
+                    countdownText.gameObject.transform.localScale = Vector3.zero;
+                    countdownText.text = "GO!";
+
+                    countdownText.gameObject.GetComponent<CanvasGroup>().DOFade(1, 1f);
+                    countdownText.gameObject.transform.DOScale(Vector3.one, 1f);
+                });
+            });
+
+        });
+    }
+
+    public void RunFillImage()
+    {
+        if (IsCountDownStart)
+        {
+            if (countFillImage.fillAmount < 1f)
+            {
+                countFillImage.fillAmount += Time.deltaTime * 0.2f;
+            }
+            else
+            {
+                IsCountDownStart = false;
+                countFillImage.fillAmount = 0;
+
+                countdownScreen.SetActive(false);
+                gamePlayScreen.SetActive(true);
+                StartGame();
+                IsGameSliderStart = true;
+            }
+        }
+    }
+    #endregion
 
 }
