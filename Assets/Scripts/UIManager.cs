@@ -45,6 +45,17 @@ public class UIManager : MonoBehaviour
     public Transform wordItemParent;
     public Transform wordItemParentAI; // AI column parent
 
+    public Image gameHighLightImage;
+    public Image gameHighLightImageAI;
+
+    public Sprite correctHighlightSprite;
+    public Sprite wrongHighlightSprite;
+    public Sprite wordHighLightSprite;
+
+
+    public Sprite rightSprite;
+    public Sprite wrongSprite;
+
     [Header("Animation Settings")]
     public bool ignoreTimeScale = true; // If true, tweens ignore Time.timeScale
 
@@ -67,6 +78,13 @@ public class UIManager : MonoBehaviour
     private int visibleStartIndexAI = 0;
     private bool isPlayerShifting = false;
     private bool isAIShifting = false;
+
+    [Header("GameOver")]
+    public Image resultImage;
+
+    public Sprite winSprite;
+    public Sprite loseSprite;
+    public Sprite drawSprite;
 
     void Start()
     {
@@ -108,6 +126,7 @@ public class UIManager : MonoBehaviour
 
         // Start AI loop when gameplay starts (optional to move into StartGame)
         StartCoroutine(AILoop());
+        resultImage.transform.localScale = Vector3.zero;
     }
 
     void UpdateTimerDisplay(float timeToDisplay)
@@ -163,13 +182,13 @@ public class UIManager : MonoBehaviour
             {
                 // 3..5 letters (max is exclusive)
                 Debug.Log(currentAITypes + "currentAITypes_1");
-                length = Random.Range(3, 6);
+                length = Random.Range(3, 4);
             }
             else
             {
                 // 5..8 letters (max is exclusive)
                 Debug.Log(currentAITypes + "currentAITypes_2");
-                length = Random.Range(5, 9);
+                length = Random.Range(4, 5);
             }
             allWords.Add(GenerateRandomWord(length));
         }
@@ -267,12 +286,14 @@ public class UIManager : MonoBehaviour
     public void UpdateItemPosition()
     {
         // Player shift only
+        gameHighLightImage.sprite = wordHighLightSprite;
         StartCoroutine(UpdateLaneRoutine(wordItemParent, true));
     }
 
     public void UpdateItemPositionAI()
     {
         // AI shift only
+        gameHighLightImageAI.sprite = wordHighLightSprite;
         StartCoroutine(UpdateLaneRoutine(wordItemParentAI, false));
     }
 
@@ -391,6 +412,9 @@ public class UIManager : MonoBehaviour
                 tmp.text = $"<color=red>{original}</color>";
                 currentWordFailed = true;
                 AddScore(-1);
+                center.GetChild(1).gameObject.SetActive(true);
+                center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
+                gameHighLightImage.sprite = wrongHighlightSprite;
                 AutoCommit();
                 return;
             }
@@ -405,6 +429,9 @@ public class UIManager : MonoBehaviour
             // mark full green and auto-commit, increment score
             tmp.text = $"<color=green>{original}</color>";
             AddScore(+1);
+            center.GetChild(1).gameObject.SetActive(true);
+            center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
+            gameHighLightImage.sprite = correctHighlightSprite;
             AutoCommit();
         }
     }
@@ -460,7 +487,8 @@ public class UIManager : MonoBehaviour
 
     private IEnumerator AutoCommitNextFrame()
     {
-        yield return null; // next frame
+        //yield return null; // next frame
+        yield return new WaitForSeconds(0.5f);
         CommitCurrentWord();
     }
 
@@ -479,7 +507,7 @@ public class UIManager : MonoBehaviour
 
         // Hide gameplay screen and show game over screen
         if (gamePlayScreen != null)
-            gamePlayScreen.SetActive(false);
+            //gamePlayScreen.SetActive(false);
         if (gameOverScreen != null)
             gameOverScreen.SetActive(true);
 
@@ -492,10 +520,31 @@ public class UIManager : MonoBehaviour
             inputField.onValueChanged.RemoveListener(OnTyping);
             inputField.text = string.Empty;
         }
+        
+        if(currentGameMode == GAMEMODE.SinglePlayer)
+        {
+            if(totalScore > aiScore)
+            {
+                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
+                resultImage.sprite = winSprite;
+            }
+            else if(totalScore < aiScore)
+            {
+                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
+                resultImage.sprite = loseSprite;
+            }
+            else
+            {
+                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
+                resultImage.sprite = drawSprite;
+            }
+        }
     }
 
     public void RestartGame()
     {
+
+        gamePlayScreen.SetActive(false);
         // Reset scores
         totalScore = 0;
         aiScore = 0;
@@ -529,12 +578,14 @@ public class UIManager : MonoBehaviour
         countFillImage.fillAmount = 0;
 
         IsGameSliderStart = false;
-        gameFillImage.fillAmount = 0;
-        gameFillImage_AI.fillAmount = 0;
+        gameFillImage.fillAmount = 1;
+        gameFillImage_AI.fillAmount = 1;
 
         countdownText.text = "3";
         countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 0;
         countdownText.gameObject.transform.localScale = Vector3.zero;
+
+        resultImage.transform.localScale = Vector3.zero;
     }
 
     private void ClearAllWordItems()
@@ -659,6 +710,9 @@ public class UIManager : MonoBehaviour
                 // Mark green and score++
                 tmp.text = $"<color=green>{original}</color>";
                 aiScore++;
+                gameHighLightImageAI.sprite = correctHighlightSprite;
+                center.GetChild(1).gameObject.SetActive(true);
+                center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
                 if (aiScoreText != null) aiScoreText.text = aiScore.ToString();
             }
             else
@@ -666,6 +720,9 @@ public class UIManager : MonoBehaviour
                 // Mark red and score-- (floored at 0)
                 tmp.text = $"<color=red>{original}</color>";
                 aiScore = Mathf.Max(0, aiScore - 1);
+                gameHighLightImageAI.sprite = wrongHighlightSprite;
+                center.GetChild(1).gameObject.SetActive(true);
+                center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
                 if (aiScoreText != null) aiScoreText.text = aiScore.ToString();
             }
 
@@ -682,10 +739,11 @@ public class UIManager : MonoBehaviour
         if (isAIShifting) yield break;
         isAIShifting = true;
         // shift AI lane only
+        yield return new WaitForSeconds(0.5f); 
         UpdateItemPositionAI();
         // small wait similar to player
-        yield return null;
-        yield return null;
+        //yield return null;
+        //yield return null;
         isAIShifting = false;
     }
 
@@ -699,17 +757,17 @@ public class UIManager : MonoBehaviour
     {
         if (IsGameSliderStart)
         {
-            if (gameFillImage.fillAmount < 1)
+            if (gameFillImage.fillAmount > 0)
             {
                 float speed = 1f / 300f;
-                gameFillImage.fillAmount += Time.deltaTime * speed;
-                gameFillImage_AI.fillAmount += Time.deltaTime * speed;
+                gameFillImage.fillAmount -= Time.deltaTime * speed;
+                gameFillImage_AI.fillAmount -= Time.deltaTime * speed;
             }
             else
             {
                 IsGameSliderStart = false;
-                gameFillImage.fillAmount = 0;
-                gameFillImage_AI.fillAmount = 0;
+                gameFillImage.fillAmount = 1;
+                gameFillImage_AI.fillAmount = 1;
             }
         }
     }
