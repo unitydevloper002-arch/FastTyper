@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastTyper Game Test - Iframe Integration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .iframe-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        iframe {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>FastTyper Game - Iframe Integration Test</h1>
+        
+        <div class="controls">
+            <h3>Test Parameters</h3>
+            <label>Match ID: <input type="text" id="matchId" value="test_match_123"></label><br>
+            <label>Player ID: <input type="text" id="playerId" value="player_456"></label><br>
+            <label>Opponent ID: <input type="text" id="opponentId" value="a912345678"></label><br>
+            <label>Replay Mode: <input type="checkbox" id="replayMode"></label><br>
+            <button onclick="updateIframe()">Update Iframe</button>
+            <button onclick="testReplay()">Test Replay</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+
+        <div class="iframe-container">
+            <iframe 
+                id="gameIframe"
+                src="about:blank"
+                width="800" 
+                height="600" 
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups">
+            </iframe>
+        </div>
+
+        <div class="log" id="messageLog">
+            <div>Message log will appear here...</div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize iframe with default parameters
+        updateIframe();
+
+        // Listen for messages from the game iframe
+        window.addEventListener('message', function(event) {
+            const log = document.getElementById('messageLog');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Log the message
+            log.innerHTML += `<div>[${timestamp}] Received: ${JSON.stringify(event.data, null, 2)}</div>`;
+            log.scrollTop = log.scrollHeight;
+            
+            // Handle different message types
+            if (event.data && event.data.type) {
+                switch (event.data.type) {
+                    case 'game_ready':
+                        log.innerHTML += `<div style="color: #00ff00;">✓ Game is ready!</div>`;
+                        break;
+                    case 'build_version':
+                        log.innerHTML += `<div style="color: #00ffff;">📦 Build version: ${event.data.payload.version}</div>`;
+                        break;
+                    case 'match_result':
+                        log.innerHTML += `<div style="color: #ffff00;">🏆 Match result: ${event.data.payload.outcome}</div>`;
+                        break;
+                    case 'match_abort':
+                        log.innerHTML += `<div style="color: #ff0000;">❌ Match aborted: ${event.data.payload.message}</div>`;
+                        break;
+                    case 'game_state':
+                        log.innerHTML += `<div style="color: #888888;">📊 Game state updated</div>`;
+                        break;
+                }
+            }
+        });
+
+        function updateIframe() {
+            const matchId = document.getElementById('matchId').value;
+            const playerId = document.getElementById('playerId').value;
+            const opponentId = document.getElementById('opponentId').value;
+            const replayMode = document.getElementById('replayMode').checked;
+            
+            // In a real scenario, this would point to your actual game URL
+            // For testing, we'll use a placeholder
+            let gameUrl = `https://games.yourdomain.com/fasttyper/index.html?matchId=${matchId}&playerId=${playerId}&opponentId=${opponentId}`;
+            
+            if (replayMode) {
+                gameUrl += '&replay=true';
+            }
+            
+            const iframe = document.getElementById('gameIframe');
+            iframe.src = gameUrl;
+            
+            const log = document.getElementById('messageLog');
+            log.innerHTML += `<div style="color: #ffffff;">🔄 Updated iframe URL: ${gameUrl}</div>`;
+        }
+
+        function testReplay() {
+            const iframe = document.getElementById('gameIframe');
+            const replayData = {
+                type: 'load_replay',
+                payload: {
+                    states: [
+                        '{"score": 100, "time": 30}',
+                        '{"score": 200, "time": 60}',
+                        '{"score": 300, "time": 90}'
+                    ]
+                }
+            };
+            
+            iframe.contentWindow.postMessage(replayData, '*');
+            
+            const log = document.getElementById('messageLog');
+            log.innerHTML += `<div style="color: #ff00ff;">🎬 Sent replay data to game</div>`;
+        }
+
+        function clearLog() {
+            document.getElementById('messageLog').innerHTML = '<div>Message log cleared...</div>';
+        }
+
+        // Example of how to handle different game scenarios
+        function simulateGameEnd() {
+            const iframe = document.getElementById('gameIframe');
+            // This would be called when the game naturally ends
+            console.log('Game ended - checking for match result message');
+        }
+
+        function simulatePlayerDisconnect() {
+            const iframe = document.getElementById('gameIframe');
+            // This would be called when a player disconnects
+            console.log('Player disconnected - checking for match_abort message');
+        }
+    </script>
+</body>
+</html>
