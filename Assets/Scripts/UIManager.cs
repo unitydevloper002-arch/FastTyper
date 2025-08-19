@@ -37,6 +37,7 @@ public class UIManager : MonoBehaviour
     public TextMeshProUGUI timerText;
     private float timeRemaining = 300f;
     private bool timerRunning = false;
+    private double endTime; // UTC timestamp when timer should finish
 
     public List<string> allWords = new List<string>();
     public List<Vector3> positionOfWords = new List<Vector3>();
@@ -86,19 +87,31 @@ public class UIManager : MonoBehaviour
     public Sprite loseSprite;
     public Sprite drawSprite;
 
+    public int localPlayerId;
+
+    private void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+    }
+
     void Start()
     {
-
+        
     }
 
     void Update()
     {
         if (timerRunning)
         {
-            if (timeRemaining > 0)
+            double timeRemainings = endTime - GetUnixTimeNow();
+
+            if (timeRemainings > 0)
             {
-                timeRemaining -= Time.deltaTime;
-                UpdateTimerDisplay(timeRemaining);
+                //timeRemaining -= Time.deltaTime;
+                UpdateTimerDisplay((float)timeRemainings);
             }
             else
             {
@@ -113,20 +126,72 @@ public class UIManager : MonoBehaviour
         RunGameFillImage();
     }
 
+    double GetUnixTimeNow()
+    {
+        return (System.DateTime.UtcNow - new System.DateTime(1970, 1, 1)).TotalSeconds;
+    }
+
     public void StartGame()
     {
         timeRemaining = 300f;
+        endTime = GetUnixTimeNow() + timeRemaining;
         timerRunning = true;
+        resultImage.transform.localScale = Vector3.zero;
 
-        CreateWordItem();
         if (inputField != null)
         {
             inputField.onValueChanged.AddListener(OnTyping);
         }
 
-        // Start AI loop when gameplay starts (optional to move into StartGame)
-        StartCoroutine(AILoop());
-        resultImage.transform.localScale = Vector3.zero;
+        if (currentGameMode == GAMEMODE.SinglePlayer)
+        {
+            CreateWordItem();
+
+            // Start AI loop when gameplay starts (optional to move into StartGame)
+            StartCoroutine(AILoop());
+        }
+        else
+        {
+            Debug.Log("IS_Multiplayer");
+            if (FusionBootstrap.Instance.runner.IsSharedModeMasterClient)
+            {
+                FusionBridge.Instance.StartMultiplayerGame();
+            }
+        }
+    }
+
+    public void StartMultiplayerWords(int seed)
+    {
+        allWords.Clear();
+        PopulateAllWordsRandom_Multiplayer(2000, seed);
+        CreateWordItem();
+    }
+
+    public void PopulateAllWordsRandom_Multiplayer(int count, int seed)
+    {
+        allWords.Clear();
+        System.Random rand = new System.Random(seed);
+
+        for (int i = 0; i < count; i++)
+        {
+            // Generate random length for each word (3–8 letters)
+            int length = rand.Next(3, 9);
+            string word = GenerateRandomWord_Multiplayer(length, rand);
+            allWords.Add(word);
+        }
+    }
+
+    private string GenerateRandomWord_Multiplayer(int length, System.Random rand)
+    {
+        const string chars = "abcdefghijklmnopqrstuvwxyz";
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+
+        for (int i = 0; i < length; i++)
+        {
+            sb.Append(chars[rand.Next(chars.Length)]);
+        }
+
+        return sb.ToString();
     }
 
     void UpdateTimerDisplay(float timeToDisplay)
@@ -170,10 +235,17 @@ public class UIManager : MonoBehaviour
     {
         currentGameMode = GAMEMODE.MultiPlayer;
         selectModeScreen.SetActive(false);
-        selectTypeScreen.SetActive(true);
+        //selectTypeScreen.SetActive(true)
+
+        countdownScreen.SetActive(true);
+        countdownText.text = "Waiting...opponent";
+        countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 1;
+        countdownText.gameObject.transform.localScale = Vector3.one;
+
+        FusionBootstrap.Instance.StartShared("123");
     }
 
-    private void PopulateAllWordsRandom(int targetCount)
+    public void PopulateAllWordsRandom(int targetCount)
     {
         for (int i = 0; i < targetCount; i++)
         {
@@ -207,11 +279,14 @@ public class UIManager : MonoBehaviour
 
     public void CreateWordItem()
     {
-         allWords.Clear();
-        // Ensure we have words
-        if (allWords == null || allWords.Count == 0)
+        if (currentGameMode == GAMEMODE.SinglePlayer)
         {
-            PopulateAllWordsRandom(2000);
+            allWords.Clear();
+            // Ensure we have words
+            if (allWords == null || allWords.Count == 0)
+            {
+                PopulateAllWordsRandom(2000);
+            }
         }
         visibleStartIndexPlayer = 0;
         visibleStartIndexAI = 0;
@@ -415,6 +490,13 @@ public class UIManager : MonoBehaviour
                 center.GetChild(1).gameObject.SetActive(true);
                 center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
                 gameHighLightImage.sprite = wrongHighlightSprite;
+
+                if (currentGameMode == GAMEMODE.MultiPlayer)
+                {
+                    // 🔹 Send to opponent
+                    FusionBridge.Instance.RpcWordCompleted(localPlayerId, original, false);
+                }
+
                 AutoCommit();
                 return;
             }
@@ -432,34 +514,51 @@ public class UIManager : MonoBehaviour
             center.GetChild(1).gameObject.SetActive(true);
             center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
             gameHighLightImage.sprite = correctHighlightSprite;
+
+            if (currentGameMode == GAMEMODE.MultiPlayer)
+            {
+                // 🔹 Send to opponent
+                FusionBridge.Instance.RpcWordCompleted(localPlayerId, original, true);
+            }
+
             AutoCommit();
         }
     }
 
-    private void RefreshLaneTexts(Transform laneParent, int startIndex)
+    public void OpponentWord(bool IsCorrect)
     {
-        if (laneParent == null) return;
-        int count = laneParent.childCount;
-        for (int i = 0; i < count; i++)
+        Transform center = wordItemParentAI.GetChild(2);
+        var tmp = center.GetChild(0).GetComponent<TextMeshProUGUI>();
+
+        // Get original (strip formatting)
+        int aiIndex = visibleStartIndexAI + 2;
+        string original = (aiIndex >= 0 && aiIndex < allWords.Count) ? allWords[aiIndex] : StripRichTags(tmp.text);
+
+        if (IsCorrect)
         {
-            var tmp = laneParent.GetChild(i).GetChild(0).GetComponent<TextMeshProUGUI>();
-            if (tmp == null) continue;
-            if (i == 0 || i == 1)
-            {
-                tmp.text = "";
-            }
-            else
-            {
-                int wordIdx = startIndex + i;
-                if (allWords != null && wordIdx >= 0 && wordIdx < allWords.Count)
-                {
-                    tmp.text = allWords[wordIdx];
-                }
-                else
-                {
-                    tmp.text = "";
-                }
-            }
+            // Mark green and score++
+            tmp.text = $"<color=green>{original}</color>";
+            aiScore++;
+            gameHighLightImageAI.sprite = correctHighlightSprite;
+            center.GetChild(1).gameObject.SetActive(true);
+            center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
+            if (aiScoreText != null) aiScoreText.text = aiScore.ToString();
+        }
+        else
+        {
+            // Mark red and score-- (floored at 0)
+            tmp.text = $"<color=red>{original}</color>";
+            aiScore = Mathf.Max(0, aiScore - 1);
+            gameHighLightImageAI.sprite = wrongHighlightSprite;
+            center.GetChild(1).gameObject.SetActive(true);
+            center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
+            if (aiScoreText != null) aiScoreText.text = aiScore.ToString();
+        }
+
+        // Advance one word (mirror the player shift)
+        if (!isAIShifting)
+        {
+            StartCoroutine(AICommitWord());
         }
     }
 
@@ -508,8 +607,8 @@ public class UIManager : MonoBehaviour
         // Hide gameplay screen and show game over screen
         if (gamePlayScreen != null)
             //gamePlayScreen.SetActive(false);
-        if (gameOverScreen != null)
-            gameOverScreen.SetActive(true);
+            if (gameOverScreen != null)
+                gameOverScreen.SetActive(true);
 
         // Stop AI loop
         StopAllCoroutines();
@@ -520,15 +619,15 @@ public class UIManager : MonoBehaviour
             inputField.onValueChanged.RemoveListener(OnTyping);
             inputField.text = string.Empty;
         }
-        
-        if(currentGameMode == GAMEMODE.SinglePlayer)
+
+        if (currentGameMode == GAMEMODE.SinglePlayer)
         {
-            if(totalScore > aiScore)
+            if (totalScore > aiScore)
             {
                 resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = winSprite;
             }
-            else if(totalScore < aiScore)
+            else if (totalScore < aiScore)
             {
                 resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = loseSprite;
@@ -555,6 +654,7 @@ public class UIManager : MonoBehaviour
 
         // Reset timer
         timeRemaining = 300f;
+        endTime = GetUnixTimeNow() + timeRemaining;
         timerRunning = false;
 
         // Clear all word items
@@ -739,7 +839,7 @@ public class UIManager : MonoBehaviour
         if (isAIShifting) yield break;
         isAIShifting = true;
         // shift AI lane only
-        yield return new WaitForSeconds(0.5f); 
+        yield return new WaitForSeconds(0.5f);
         UpdateItemPositionAI();
         // small wait similar to player
         //yield return null;
@@ -784,6 +884,10 @@ public class UIManager : MonoBehaviour
 
     public IEnumerator StartCountdown_Animation()
     {
+        countdownText.text = "3";
+        countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 0;
+        countdownText.gameObject.transform.localScale = Vector3.zero;
+
         yield return new WaitForSeconds(0.5f);
         countdownText.text = "3";
         countdownText.gameObject.GetComponent<CanvasGroup>().DOFade(1, 1f);
@@ -835,6 +939,16 @@ public class UIManager : MonoBehaviour
             }
         }
     }
+    #endregion
+
+    #region MultiPlayer
+
+    public void MultiplayerGameStart()
+    {
+        IsCountDownStart = true;
+        StartCoroutine(StartCountdown_Animation());
+    }
+
     #endregion
 
 }
