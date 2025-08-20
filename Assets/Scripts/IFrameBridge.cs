@@ -21,6 +21,8 @@ public class IFrameBridge : MonoBehaviour
     internal GAMETYPE botLevel;
     public GameType gameType;
 
+    public bool IsTestBoat = true;
+
     private bool isInitialized = false;
     private bool gameModeInitialized = false;
     private bool isReplayMode = false;
@@ -116,11 +118,18 @@ public class IFrameBridge : MonoBehaviour
             InitParamsFromJS(json);
 #else
             // Use test data in editor - CHOOSE MODE HERE:
-            // FOR AI MODE TESTING (uncomment this line):
-       //     string json = "{\"matchId\":\"test_match\",\"playerId\":\"human_player\",\"opponentId\":\"a912345678\"}";
+            string json;
 
-            //FOR MULTIPLAYER MODE TESTING (comment out the line above and uncomment this line):
-             string json = "{\"matchId\":\"test_match\",\"playerId\":\"player1\",\"opponentId\":\"player2\"}";
+            if (IsTestBoat)
+            {
+                // FOR AI MODE TESTING (uncomment this line):
+                json = "{\"matchId\":\"test_match\",\"playerId\":\"human_player\",\"opponentId\":\"a912345678\"}";
+            }
+            else
+            {
+                //FOR MULTIPLAYER MODE TESTING (comment out the line above and uncomment this line):
+                json = "{\"matchId\":\"test_match\",\"playerId\":\"player1\",\"opponentId\":\"player2\"}";
+            }
 
             InitParamsFromJS(json);
 #endif
@@ -313,7 +322,7 @@ public class IFrameBridge : MonoBehaviour
         {
             // Use the new AutoStartGame method to bypass selection screens
             UIManager.Instance.AutoStartGame(GAMEMODE.MultiPlayer);
-            
+
             // Start Fusion networking - this will be handled by the countdown system
             // The actual game start will happen when countdown completes
         }
@@ -479,10 +488,10 @@ public class IFrameBridge : MonoBehaviour
     public void PostOpponentForfeit(string opponentId)
     {
         Debug.Log($"[IFrameBridge] Opponent {opponentId} forfeited the match");
-        
+
         // Use simple approach
         PostMatchAbort("Opponent left the game.", "", "");
-        
+
         // Also send match result with "won"
         int myScore = UIManager.Instance != null ? UIManager.Instance.totalScore : 0;
         int opponentScore = UIManager.Instance != null ? UIManager.Instance.aiScore : 0;
@@ -493,7 +502,7 @@ public class IFrameBridge : MonoBehaviour
     public void PostPlayerForfeit()
     {
         Debug.Log("[IFrameBridge] Local player forfeited the match");
-        
+
         // Use simple approach
         PostMatchAbort("You left the game.", "", "");
     }
@@ -561,16 +570,16 @@ public class IFrameBridge : MonoBehaviour
     public void OnPlayerLeaveGame()
     {
         Debug.Log("[IFrameBridge] Player requested to leave the game");
-        
+
         // Send forfeit message to platform
         PostPlayerForfeit();
-        
+
         // Disconnect from network if in multiplayer
         if (gameType == GameType.Multiplayer && FusionBootstrap.Instance != null)
         {
             FusionBootstrap.Instance.DisconnectFromGame();
         }
-        
+
         // Stop or reset the game via UI
         if (UIManager.Instance != null)
         {

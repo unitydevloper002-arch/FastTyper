@@ -5,6 +5,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Text.RegularExpressions;
 using DG.Tweening;
+using System;
+using System.Linq;
+using UnityEngine.EventSystems;
 
 public enum GAMEMODE
 {
@@ -28,6 +31,11 @@ public class UIManager : MonoBehaviour
     public GameObject gamePlayScreen;
     public GameObject countdownScreen;
     public GameObject gameOverScreen;
+
+    [Header("Word Source")]
+    public bool loadWordsFromTextFile = true;
+    public string resourcesWordsPath = "words"; // Assets/Resources/words.txt
+    public string streamingAssetsFileName = "words.txt"; // Assets/StreamingAssets/words.txt
 
     [Header("Game State")]
     public GAMEMODE currentGameMode;
@@ -63,6 +71,8 @@ public class UIManager : MonoBehaviour
     [Header("Typing")]
     public TMP_InputField inputField;
     private bool currentWordFailed = false;
+    private bool currentWordCompleted = false;
+    private float typingLockUntil = 0f;
 
     [Header("Score")]
     public TextMeshProUGUI scoreText;
@@ -82,6 +92,24 @@ public class UIManager : MonoBehaviour
 
     [Header("GameOver")]
     public Image resultImage;
+
+    public TextMeshProUGUI player_Score;
+    public TextMeshProUGUI opponent_Score; 
+
+    public TextMeshProUGUI Player_WordTyped;
+    public int Player_WordTyped_Count;
+    public TextMeshProUGUI Opponent_WordTyped;
+    public int Opponent_WordTyped_Count;
+
+    public TextMeshProUGUI Player_Accuracy; 
+    public int Player_Accuracy_Percentage;
+    public TextMeshProUGUI Opponent_Accuracy;
+    public int Opponent_Accuracy_Percentage;
+
+    public TextMeshProUGUI Player_lettersPerSecond; 
+    public int Player_lettersPerSecond_Count;
+    public TextMeshProUGUI Opponent_lettersPerSecond;
+    public int Opponent_lettersPerSecond_Count;
 
     public Sprite winSprite;
     public Sprite loseSprite;
@@ -168,8 +196,26 @@ public class UIManager : MonoBehaviour
             }
         }
 
+        // Click anywhere to refocus invisible input for typing
+        if (inputField != null && gamePlayScreen != null && gamePlayScreen.activeInHierarchy)
+        {
+            if (Input.GetMouseButtonDown(0) || Input.touchCount > 0)
+            {
+                EnsureInputFocus();
+            }
+        }
+
         RunFillImage();
         RunGameFillImage();
+    }
+
+    private void UpdateTimerDisplay(float timeToDisplay)
+    {
+        if (timerText == null) return;
+        if (timeToDisplay < 0f) timeToDisplay = 0f;
+        int minutes = Mathf.FloorToInt(timeToDisplay / 60f);
+        int seconds = Mathf.FloorToInt(timeToDisplay % 60f);
+        timerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
     }
 
     double GetUnixTimeNow()
@@ -179,161 +225,73 @@ public class UIManager : MonoBehaviour
 
     public void StartGame()
     {
-        timeRemaining = 300f;
-        endTime = GetUnixTimeNow() + timeRemaining;
-        timerRunning = true;
-        resultImage.transform.localScale = Vector3.zero;
+		timeRemaining = 300f;
+		endTime = GetUnixTimeNow() + timeRemaining;
+		timerRunning = true;
 
-        if (inputField != null)
-        {
-            inputField.onValueChanged.AddListener(OnTyping);
-        }
+		if (inputField != null)
+		{
+			inputField.onValueChanged.AddListener(OnTyping);
+			HideInputFieldVisuals();
+			EnsureInputFocus();
+		}
 
-        if (currentGameMode == GAMEMODE.SinglePlayer)
-        {
-            CreateWordItem();
+		// 1) Load words from file (if enabled) directly into allWords
+		if (loadWordsFromTextFile)
+		{
+			var loaded = LoadWordsFromConfiguredSources();
+			if (loaded.Count > 0)
+			{
+				allWords = loaded;
+			}
+		}
+		// Ensure list exists
+		if (allWords == null) allWords = new List<string>();
+		Debug.Log($"[UIManager] Loaded words count: {allWords.Count}");
 
-            // Start AI loop when gameplay starts (optional to move into StartGame)
-            StartCoroutine(AILoop());
-        }
-        else
-        {
-            Debug.Log("IS_Multiplayer");
-            if (FusionBootstrap.Instance.runner.IsSharedModeMasterClient)
-            {
-                FusionBridge.Instance.StartMultiplayerGame();
-            }
-        }
+		if (currentGameMode == GAMEMODE.SinglePlayer)
+		{
+			// 2) Shuffle the list once per game start
+			ShuffleListInPlace(allWords, new System.Random());
+
+			CreateWordItem();
+
+			// Start AI loop when gameplay starts (optional to move into StartGame)
+			StartCoroutine(AILoop());
+		}
+		else
+		{
+			Debug.Log("IS_Multiplayer");
+			if (FusionBootstrap.Instance.runner.IsSharedModeMasterClient)
+			{
+				FusionBridge.Instance.StartMultiplayerGame();
+			}
+		}
     }
 
     public void StartMultiplayerWords(int seed)
     {
-        allWords.Clear();
-        PopulateAllWordsRandom_Multiplayer(2000, seed);
-        CreateWordItem();
+		// Load words from file if configured and not already loaded
+		if (loadWordsFromTextFile && (allWords == null || allWords.Count == 0))
+		{
+			var loaded = LoadWordsFromConfiguredSources();
+			if (loaded.Count > 0)
+			{
+				allWords = loaded;
+			}
+		}
+		if (allWords == null) allWords = new List<string>();
+		Debug.Log($"[UIManager] Loaded words count (MP): {allWords.Count}");
+
+		// Deterministic shuffle using shared seed
+		ShuffleListInPlace(allWords, new System.Random(seed));
+		CreateWordItem();
     }
 
-    public void PopulateAllWordsRandom_Multiplayer(int count, int seed)
-    {
-        allWords.Clear();
-        System.Random rand = new System.Random(seed);
-
-        for (int i = 0; i < count; i++)
-        {
-            // Generate random length for each word (3–8 letters)
-            int length = rand.Next(3, 6);
-            string word = GenerateRandomWord_Multiplayer(length, rand);
-            allWords.Add(word);
-        }
-    }
-
-    private string GenerateRandomWord_Multiplayer(int length, System.Random rand)
-    {
-        const string chars = "abcdefghijklmnopqrstuvwxyz";
-        System.Text.StringBuilder sb = new System.Text.StringBuilder();
-
-        for (int i = 0; i < length; i++)
-        {
-            sb.Append(chars[rand.Next(chars.Length)]);
-        }
-
-        return sb.ToString();
-    }
-
-    void UpdateTimerDisplay(float timeToDisplay)
-    {
-        if (timeToDisplay < 0)
-            timeToDisplay = 0;
-
-        int minutes = Mathf.FloorToInt(timeToDisplay / 60);
-        int seconds = Mathf.FloorToInt(timeToDisplay % 60);
-        timerText.text = string.Format("{0:00}:{1:00}", minutes, seconds);
-    }
-
-    public void OnClickEasy()
-    {
-        currentAITypes = GAMETYPE.Easy;
-        selectTypeScreen.SetActive(false);
-
-        IsCountDownStart = true;
-        countdownScreen.SetActive(true);
-        StartCoroutine(StartCountdown_Animation());
-    }
-
-    public void OnClickHard()
-    {
-        currentAITypes = GAMETYPE.Hard;
-        selectTypeScreen.SetActive(false);
-
-        IsCountDownStart = true;
-        countdownScreen.SetActive(true);
-        StartCoroutine(StartCountdown_Animation());
-    }
-
-    public void OnClickSinglePlayer()
-    {
-        currentGameMode = GAMEMODE.SinglePlayer;
-        selectModeScreen.SetActive(false);
-        selectTypeScreen.SetActive(true);
-    }
-
-    public void OnClickMultiPlayer()
-    {
-        currentGameMode = GAMEMODE.MultiPlayer;
-        selectModeScreen.SetActive(false);
-        //selectTypeScreen.SetActive(true)
-
-        countdownScreen.SetActive(true);
-        countdownText.text = "Waiting...opponent";
-        countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 1;
-        countdownText.gameObject.transform.localScale = Vector3.one;
-
-        FusionBootstrap.Instance.StartShared("123");
-    }
-
-    public void PopulateAllWordsRandom(int targetCount)
-    {
-        for (int i = 0; i < targetCount; i++)
-        {
-            int length;
-            if (currentAITypes == GAMETYPE.Easy)
-            {
-                // 3..5 letters (max is exclusive)
-                Debug.Log(currentAITypes + "currentAITypes_1");
-                length = Random.Range(3, 4);
-            }
-            else
-            {
-                // 5..8 letters (max is exclusive)
-                Debug.Log(currentAITypes + "currentAITypes_2");
-                length = Random.Range(4, 5);
-            }
-            allWords.Add(GenerateRandomWord(length));
-        }
-    }
-
-    private string GenerateRandomWord(int length)
-    {
-        const string chars = "abcdefghijklmnopqrstuvwxyz";
-        System.Text.StringBuilder sb = new System.Text.StringBuilder();
-        for (int i = 0; i < length; i++)
-        {
-            sb.Append(chars[Random.Range(0, chars.Length)]);
-        }
-        return sb.ToString();
-    }
-
+    
     public void CreateWordItem()
     {
-        if (currentGameMode == GAMEMODE.SinglePlayer)
-        {
-            allWords.Clear();
-            // Ensure we have words
-            if (allWords == null || allWords.Count == 0)
-            {
-                PopulateAllWordsRandom(2000);
-            }
-        }
+        if (allWords == null) allWords = new List<string>();
         visibleStartIndexPlayer = 0;
         visibleStartIndexAI = 0;
 
@@ -495,6 +453,8 @@ public class UIManager : MonoBehaviour
     private void OnTyping(string value)
     {
         if (wordItemParent == null || wordItemParent.childCount < 3) return;
+        // Block typing during lock window
+        if (Time.unscaledTime < typingLockUntil) return;
         Transform center = wordItemParent.GetChild(2);
         var tmp = center.GetChild(0).GetComponent<TextMeshProUGUI>();
         if (tmp == null) return;
@@ -513,23 +473,17 @@ public class UIManager : MonoBehaviour
         string typed = (value ?? string.Empty).Trim();
         if (string.IsNullOrEmpty(typed))
         {
-            // Do not reset formatting when input becomes empty
             return;
         }
 
-        if (currentWordFailed)
-        {
-            // Already failed; keep red until space
-            tmp.text = $"<color=red>{original}</color>";
-            return;
-        }
+        if (currentWordCompleted) return;
 
-        // Compare letter-by-letter
-        for (int i = 0; i < typed.Length; i++)
+        string typedCapped = typed.Length > original.Length ? typed.Substring(0, original.Length) : typed;
+
+        for (int i = 0; i < typedCapped.Length; i++)
         {
-            if (i >= original.Length || char.ToLowerInvariant(typed[i]) != char.ToLowerInvariant(original[i]))
+            if (char.ToLowerInvariant(typedCapped[i]) != char.ToLowerInvariant(original[i]))
             {
-                // mark full red and auto-commit this word, decrement score
                 tmp.text = $"<color=red>{original}</color>";
                 currentWordFailed = true;
                 AddScore(-1);
@@ -539,22 +493,21 @@ public class UIManager : MonoBehaviour
 
                 if (currentGameMode == GAMEMODE.MultiPlayer)
                 {
-                    // 🔹 Send to opponent
                     FusionBridge.Instance.RpcWordCompleted(localPlayerId, original, false);
                 }
 
+                // Lock typing for 0.5s until commit
+                typingLockUntil = Time.unscaledTime + 0.5f;
+                if (inputField != null) inputField.readOnly = true;
                 AutoCommit();
                 return;
             }
         }
 
-        // Partial correct => show green letters
-        tmp.text = BuildPartialGreen(original, typed);
+        tmp.text = BuildPartialGreen(original, typedCapped);
 
-        // If fully typed correctly, color full green (still wait for space to commit)
-        if (typed.Length == original.Length)
+        if (typedCapped.Length == original.Length)
         {
-            // mark full green and auto-commit, increment score
             tmp.text = $"<color=green>{original}</color>";
             AddScore(+1);
             center.GetChild(1).gameObject.SetActive(true);
@@ -563,10 +516,13 @@ public class UIManager : MonoBehaviour
 
             if (currentGameMode == GAMEMODE.MultiPlayer)
             {
-                // 🔹 Send to opponent
                 FusionBridge.Instance.RpcWordCompleted(localPlayerId, original, true);
             }
 
+            currentWordCompleted = true;
+            // Lock typing for 0.5s until commit
+            typingLockUntil = Time.unscaledTime + 0.5f;
+            if (inputField != null) inputField.readOnly = true;
             AutoCommit();
         }
     }
@@ -619,9 +575,16 @@ public class UIManager : MonoBehaviour
 
         // Advance list and reset state
         currentWordFailed = false;
+        currentWordCompleted = false;
         UpdateItemPosition();
         // Release the shift lock slightly after animations complete
         StartCoroutine(ReleasePlayerShiftLockAfterFrame());
+        // Re-enable typing after commit and restore focus
+        if (inputField != null)
+        {
+            inputField.readOnly = false;
+            EnsureInputFocus();
+        }
     }
 
     private void AutoCommit()
@@ -670,35 +633,38 @@ public class UIManager : MonoBehaviour
         {
             if (totalScore > aiScore)
             {
-                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = winSprite;
                 
                 // Notify platform of AI mode victory
                 if (IFrameBridge.Instance != null)
                 {
                     IFrameBridge.Instance.PostMatchResult("won", totalScore, aiScore);
+                    player_Score.text = totalScore.ToString();
+                    opponent_Score.text = aiScore.ToString();
                 }
             }
             else if (totalScore < aiScore)
             {
-                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = loseSprite;
                 
                 // Notify platform of AI mode loss
                 if (IFrameBridge.Instance != null)
                 {
                     IFrameBridge.Instance.PostMatchResult("lost", totalScore, aiScore);
+                    player_Score.text = totalScore.ToString();
+                    opponent_Score.text = aiScore.ToString();
                 }
             }
             else
             {
-                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = drawSprite;
                 
                 // Notify platform of AI mode draw
                 if (IFrameBridge.Instance != null)
                 {
                     IFrameBridge.Instance.PostMatchResult("draw", totalScore, aiScore);
+                    player_Score.text = totalScore.ToString();
+                    opponent_Score.text = aiScore.ToString();
                 }
             }
         }
@@ -707,35 +673,38 @@ public class UIManager : MonoBehaviour
             // Multiplayer game over - compare player vs opponent scores
             if (totalScore > aiScore)
             {
-                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = winSprite;
                 
                 // Notify platform of victory
                 if (IFrameBridge.Instance != null)
                 {
                     IFrameBridge.Instance.PostMatchResult("won", totalScore, aiScore);
+                    player_Score.text = totalScore.ToString();
+                    opponent_Score.text = aiScore.ToString();
                 }
             }
             else if (totalScore < aiScore)
             {
-                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = loseSprite;
                 
                 // Notify platform of loss
                 if (IFrameBridge.Instance != null)
                 {
                     IFrameBridge.Instance.PostMatchResult("lost", totalScore, aiScore);
+                    player_Score.text = totalScore.ToString();
+                    opponent_Score.text = aiScore.ToString();
                 }
             }
             else
             {
-                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = drawSprite;
                 
                 // Notify platform of draw
                 if (IFrameBridge.Instance != null)
                 {
                     IFrameBridge.Instance.PostMatchResult("draw", totalScore, aiScore);
+                    player_Score.text = totalScore.ToString();
+                    opponent_Score.text = aiScore.ToString();
                 }
             }
         }
@@ -785,8 +754,6 @@ public class UIManager : MonoBehaviour
         countdownText.text = "3";
         countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 0;
         countdownText.gameObject.transform.localScale = Vector3.zero;
-
-        resultImage.transform.localScale = Vector3.zero;
     }
 
     // Method to handle when player wants to leave the game during multiplayer
@@ -858,6 +825,83 @@ public class UIManager : MonoBehaviour
         return sb.ToString();
     }
 
+    private List<string> LoadWordsFromConfiguredSources()
+    {
+        var result = new List<string>();
+
+        // Try Resources first if path provided
+        if (!string.IsNullOrWhiteSpace(resourcesWordsPath))
+        {
+            try
+            {
+                TextAsset ta = Resources.Load<TextAsset>(resourcesWordsPath);
+                if (ta != null)
+                {
+                    ParseWordsInto(result, ta.text);
+                }
+            }
+            catch { /* ignore and fallback */ }
+        }
+
+        // If still empty, try StreamingAssets
+        if (result.Count == 0 && !string.IsNullOrWhiteSpace(streamingAssetsFileName))
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(Application.streamingAssetsPath, streamingAssetsFileName);
+#if UNITY_ANDROID && !UNITY_EDITOR
+                // On Android, StreamingAssets is in jar. Use UnityWebRequest to read.
+                var request = UnityEngine.Networking.UnityWebRequest.Get(path);
+                var op = request.SendWebRequest();
+                while (!op.isDone) { }
+                if (request.result == UnityEngine.Networking.UnityWebRequest.Result.Success)
+                {
+                    ParseWordsInto(result, request.downloadHandler.text);
+                }
+#else
+                if (System.IO.File.Exists(path))
+                {
+                    string content = System.IO.File.ReadAllText(path);
+                    ParseWordsInto(result, content);
+                }
+#endif
+            }
+            catch { /* ignore */ }
+        }
+
+        return result;
+    }
+
+    private static void ParseWordsInto(List<string> target, string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return;
+        // Add ALL entries as provided (keep duplicates and any characters)
+        var normalized = content.Replace("\r\n", "\n").Replace("\r", "\n");
+        var parts = normalized.Split(new[] { '\n', ',' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < parts.Length; i++)
+        {
+            var w = parts[i].Trim();
+            if (w.Length == 0) continue;
+            target.Add(w);
+        }
+    }
+
+    // Fisher–Yates shuffle for deterministic ordering
+    private static void ShuffleListInPlace<T>(List<T> list, System.Random rng)
+    {
+        if (list == null || list.Count <= 1) return;
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            if (j != i)
+            {
+                T tmp = list[i];
+                list[i] = list[j];
+                list[j] = tmp;
+            }
+        }
+    }
+
     // Tracks which index in allWords is mapped to child 0
     private int visibleStartIndex = 0;
 
@@ -899,13 +943,13 @@ public class UIManager : MonoBehaviour
         {
             // wait a short random delay to simulate typing speed (slower per mode)
             float delay = (currentAITypes == GAMETYPE.Easy)
-                ? Random.Range(easyDelayRange.x, easyDelayRange.y)
-                : Random.Range(hardDelayRange.x, hardDelayRange.y);
+                ? UnityEngine.Random.Range(easyDelayRange.x, easyDelayRange.y)
+                : UnityEngine.Random.Range(hardDelayRange.x, hardDelayRange.y);
             yield return new WaitForSecondsRealtime(delay);
 
             // Determine win chance and mistake chance
             float winChance = (currentAITypes == GAMETYPE.Easy) ? 0.70f : 0.95f; // per your spec
-            bool isWin = Random.value <= winChance;
+            bool isWin = UnityEngine.Random.value <= winChance;
 
             // Ensure AI has items
             if (wordItemParentAI == null || wordItemParentAI.childCount < 3) continue;
@@ -1085,8 +1129,9 @@ public class UIManager : MonoBehaviour
         // Display win sprite since opponent left
         if (resultImage != null)
         {
-            resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
             resultImage.sprite = winSprite;
+            player_Score.text = totalScore.ToString();
+            opponent_Score.text = aiScore.ToString();
         }
         
         Debug.Log("Player wins due to opponent disconnection - displaying win screen");
@@ -1114,8 +1159,9 @@ public class UIManager : MonoBehaviour
         // Display lose sprite since we left
         if (resultImage != null)
         {
-            resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
             resultImage.sprite = loseSprite;
+            player_Score.text = totalScore.ToString();
+            opponent_Score.text = aiScore.ToString();
         }
         
         // Notify platform that local player forfeited
@@ -1128,5 +1174,26 @@ public class UIManager : MonoBehaviour
     }
 
     #endregion
+
+	private void EnsureInputFocus()
+	{
+		if (inputField == null) return;
+		if (EventSystem.current != null)
+		{
+			EventSystem.current.SetSelectedGameObject(inputField.gameObject);
+			inputField.ActivateInputField();
+		}
+	}
+
+	private void HideInputFieldVisuals()
+	{
+		if (inputField == null) return;
+		// Hide text caret, placeholder, and background by disabling the Graphic components
+		var cg = inputField.GetComponent<CanvasGroup>();
+		if (cg == null) cg = inputField.gameObject.AddComponent<CanvasGroup>();
+		cg.alpha = 0f;
+		cg.blocksRaycasts = false; // clicks pass through
+		cg.interactable = true;    // still receives keyboard input when focused
+	}
 
 }

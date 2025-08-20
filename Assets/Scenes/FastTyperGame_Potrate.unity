@@ -543,6 +543,9 @@ MonoBehaviour:
   gamePlayScreen: {fileID: 2091825383237573558}
   countdownScreen: {fileID: 1633558980}
   gameOverScreen: {fileID: 1886312461}
+  loadWordsFromTextFile: 1
+  resourcesWordsPath: words
+  streamingAssetsFileName: words.txt
   currentGameMode: 0
   currentAITypes: 0
   timerText: {fileID: 8469472393570643826}
@@ -3298,7 +3301,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1633558981
 RectTransform:
   m_ObjectHideFlags: 0
@@ -3966,6 +3969,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   gameType: 0
+  IsTestBoat: 1
 --- !u!1 &1772889805
 GameObject:
   m_ObjectHideFlags: 0
