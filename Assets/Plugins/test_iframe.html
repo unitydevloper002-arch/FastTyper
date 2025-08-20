@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastTyper Game Test - Iframe Integration</title>
+    <title>FastTyper IFrameBridge Test</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -18,172 +18,270 @@
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        .iframe-container {
-            text-align: center;
+        .test-section {
             margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .iframe-container {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #333;
+            border-radius: 5px;
+            overflow: hidden;
         }
         iframe {
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            width: 100%;
+            height: 100%;
+            border: none;
         }
         .controls {
             margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 5px;
-        }
-        .log {
-            background: #000;
-            color: #0f0;
-            padding: 10px;
-            border-radius: 5px;
-            font-family: monospace;
-            height: 200px;
-            overflow-y: auto;
-            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
         button {
+            padding: 10px 20px;
             background: #007bff;
             color: white;
             border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
+            border-radius: 5px;
             cursor: pointer;
-            margin: 5px;
         }
         button:hover {
             background: #0056b3;
         }
-        input {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin: 5px;
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>FastTyper Game - Iframe Integration Test</h1>
+        <h1>FastTyper IFrameBridge Integration Test</h1>
         
-        <div class="controls">
-            <h3>Test Parameters</h3>
-            <label>Match ID: <input type="text" id="matchId" value="test_match_123"></label><br>
-            <label>Player ID: <input type="text" id="playerId" value="player_456"></label><br>
-            <label>Opponent ID: <input type="text" id="opponentId" value="a912345678"></label><br>
-            <label>Replay Mode: <input type="checkbox" id="replayMode"></label><br>
-            <button onclick="updateIframe()">Update Iframe</button>
-            <button onclick="testReplay()">Test Replay</button>
-            <button onclick="clearLog()">Clear Log</button>
+        <div class="status disconnected" id="status">
+            Status: Disconnected
+        </div>
+
+        <div class="test-section">
+            <h3>Test Modes (Auto-Start)</h3>
+            <p><strong>New Feature:</strong> Games now automatically start from countdown, bypassing mode selection screens!</p>
+            <div class="controls">
+                <button onclick="loadAIMode()">AI Mode (Easy)</button>
+                <button onclick="loadAIModeHard()">AI Mode (Hard)</button>
+                <button onclick="loadMultiplayerMode()">Multiplayer Mode</button>
+                <button onclick="loadTestMode()">Test Mode</button>
+                <button onclick="clearLog()">Clear Log</button>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>Platform Controls</h3>
+            <div class="controls">
+                <button onclick="pauseGame()">Pause Game</button>
+                <button onclick="resumeGame()">Resume Game</button>
+                <button onclick="simulateTimeout()">Simulate Timeout</button>
+                <button onclick="simulateConnectionLoss()">Simulate Connection Loss</button>
+                <button onclick="loadReplay()">Load Replay</button>
+            </div>
         </div>
 
         <div class="iframe-container">
-            <iframe 
-                id="gameIframe"
-                src="about:blank"
-                width="800" 
-                height="600" 
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups">
-            </iframe>
+            <iframe id="gameFrame" src="about:blank"></iframe>
         </div>
 
-        <div class="log" id="messageLog">
-            <div>Message log will appear here...</div>
+        <div class="test-section">
+            <h3>Communication Log</h3>
+            <div class="log" id="log"></div>
         </div>
     </div>
 
     <script>
-        // Initialize iframe with default parameters
-        updateIframe();
+        let gameFrame = document.getElementById('gameFrame');
+        let logElement = document.getElementById('log');
+        let statusElement = document.getElementById('status');
+        let isConnected = false;
 
-        // Listen for messages from the game iframe
+        // Listen for messages from the game
         window.addEventListener('message', function(event) {
-            const log = document.getElementById('messageLog');
-            const timestamp = new Date().toLocaleTimeString();
+            logMessage('Received: ' + JSON.stringify(event.data, null, 2));
             
-            // Log the message
-            log.innerHTML += `<div>[${timestamp}] Received: ${JSON.stringify(event.data, null, 2)}</div>`;
-            log.scrollTop = log.scrollHeight;
+            if (event.data && event.data.type === 'game_ready') {
+                isConnected = true;
+                updateStatus();
+                logMessage('✅ Game is ready!');
+            }
             
-            // Handle different message types
-            if (event.data && event.data.type) {
-                switch (event.data.type) {
-                    case 'game_ready':
-                        log.innerHTML += `<div style="color: #00ff00;">✓ Game is ready!</div>`;
-                        break;
-                    case 'build_version':
-                        log.innerHTML += `<div style="color: #00ffff;">📦 Build version: ${event.data.payload.version}</div>`;
-                        break;
-                    case 'match_result':
-                        log.innerHTML += `<div style="color: #ffff00;">🏆 Match result: ${event.data.payload.outcome}</div>`;
-                        break;
-                    case 'match_abort':
-                        log.innerHTML += `<div style="color: #ff0000;">❌ Match aborted: ${event.data.payload.message}</div>`;
-                        break;
-                    case 'game_state':
-                        log.innerHTML += `<div style="color: #888888;">📊 Game state updated</div>`;
-                        break;
-                }
+            if (event.data && event.data.type === 'build_version') {
+                logMessage('📦 Build version: ' + event.data.payload.version);
+            }
+            
+            if (event.data && event.data.type === 'match_result') {
+                logMessage('🏆 Match Result: ' + event.data.payload.outcome + ' (Score: ' + event.data.payload.score + ')');
+            }
+            
+            if (event.data && event.data.type === 'match_abort') {
+                logMessage('❌ Match Aborted: ' + event.data.payload.message);
+            }
+            
+            if (event.data && event.data.type === 'game_state') {
+                logMessage('🎮 Game State: ' + event.data.payload.state);
             }
         });
 
-        function updateIframe() {
-            const matchId = document.getElementById('matchId').value;
-            const playerId = document.getElementById('playerId').value;
-            const opponentId = document.getElementById('opponentId').value;
-            const replayMode = document.getElementById('replayMode').checked;
-            
-            // In a real scenario, this would point to your actual game URL
-            // For testing, we'll use a placeholder
-            let gameUrl = `https://games.yourdomain.com/fasttyper/index.html?matchId=${matchId}&playerId=${playerId}&opponentId=${opponentId}`;
-            
-            if (replayMode) {
-                gameUrl += '&replay=true';
-            }
-            
-            const iframe = document.getElementById('gameIframe');
-            iframe.src = gameUrl;
-            
-            const log = document.getElementById('messageLog');
-            log.innerHTML += `<div style="color: #ffffff;">🔄 Updated iframe URL: ${gameUrl}</div>`;
+        function logMessage(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.innerHTML += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
         }
 
-        function testReplay() {
-            const iframe = document.getElementById('gameIframe');
-            const replayData = {
-                type: 'load_replay',
-                payload: {
+        function updateStatus() {
+            if (isConnected) {
+                statusElement.textContent = 'Status: Connected';
+                statusElement.className = 'status connected';
+            } else {
+                statusElement.textContent = 'Status: Disconnected';
+                statusElement.className = 'status disconnected';
+            }
+        }
+
+        function loadAIMode() {
+            const url = 'http://localhost:8080/index.html?matchId=ai_test_001&playerId=human_player&opponentId=a912345678';
+            gameFrame.src = url;
+            isConnected = false;
+            updateStatus();
+            logMessage('🎯 Loading AI Mode (Easy)...');
+        }
+
+        function loadAIModeHard() {
+            const url = 'http://localhost:8080/index.html?matchId=ai_test_002&playerId=human_player&opponentId=b912345678';
+            gameFrame.src = url;
+            isConnected = false;
+            updateStatus();
+            logMessage('🎯 Loading AI Mode (Hard)...');
+        }
+
+        function loadMultiplayerMode() {
+            const url = 'http://localhost:8080/index.html?matchId=multi_test_001&playerId=player1&opponentId=player2';
+            gameFrame.src = url;
+            isConnected = false;
+            updateStatus();
+            logMessage('🌐 Loading Multiplayer Mode...');
+        }
+
+        function loadTestMode() {
+            const url = 'http://localhost:8080/index.html?testMode=ai';
+            gameFrame.src = url;
+            isConnected = false;
+            updateStatus();
+            logMessage('🧪 Loading Test Mode...');
+        }
+
+        function pauseGame() {
+            if (isConnected) {
+                gameFrame.contentWindow.postMessage({
+                    type: 'pause_game',
+                    payload: {}
+                }, '*');
+                logMessage('⏸️ Pausing game...');
+            } else {
+                logMessage('❌ Game not connected');
+            }
+        }
+
+        function resumeGame() {
+            if (isConnected) {
+                gameFrame.contentWindow.postMessage({
+                    type: 'resume_game',
+                    payload: {}
+                }, '*');
+                logMessage('▶️ Resuming game...');
+            } else {
+                logMessage('❌ Game not connected');
+            }
+        }
+
+        function simulateTimeout() {
+            if (isConnected) {
+                gameFrame.contentWindow.postMessage({
+                    type: 'player_timeout',
+                    payload: {
+                        playerId: 'opponent_player'
+                    }
+                }, '*');
+                logMessage('⏰ Simulating player timeout...');
+            } else {
+                logMessage('❌ Game not connected');
+            }
+        }
+
+        function simulateConnectionLoss() {
+            if (isConnected) {
+                gameFrame.contentWindow.postMessage({
+                    type: 'connection_lost',
+                    payload: {}
+                }, '*');
+                logMessage('📡 Simulating connection loss...');
+            } else {
+                logMessage('❌ Game not connected');
+            }
+        }
+
+        function loadReplay() {
+            if (isConnected) {
+                const replayData = {
                     states: [
-                        '{"score": 100, "time": 30}',
-                        '{"score": 200, "time": 60}',
-                        '{"score": 300, "time": 90}'
+                        '{"type":"game_start","timestamp":1234567890}',
+                        '{"type":"word_typed","word":"hello","timestamp":1234567891}',
+                        '{"type":"word_typed","word":"world","timestamp":1234567892}',
+                        '{"type":"game_end","score":100,"timestamp":1234567893}'
                     ]
-                }
-            };
-            
-            iframe.contentWindow.postMessage(replayData, '*');
-            
-            const log = document.getElementById('messageLog');
-            log.innerHTML += `<div style="color: #ff00ff;">🎬 Sent replay data to game</div>`;
+                };
+                
+                gameFrame.contentWindow.postMessage({
+                    type: 'load_replay',
+                    payload: replayData
+                }, '*');
+                logMessage('📺 Loading replay data...');
+            } else {
+                logMessage('❌ Game not connected');
+            }
         }
 
         function clearLog() {
-            document.getElementById('messageLog').innerHTML = '<div>Message log cleared...</div>';
+            logElement.innerHTML = '';
+            logMessage('🗑️ Log cleared');
         }
 
-        // Example of how to handle different game scenarios
-        function simulateGameEnd() {
-            const iframe = document.getElementById('gameIframe');
-            // This would be called when the game naturally ends
-            console.log('Game ended - checking for match result message');
-        }
-
-        function simulatePlayerDisconnect() {
-            const iframe = document.getElementById('gameIframe');
-            // This would be called when a player disconnects
-            console.log('Player disconnected - checking for match_abort message');
-        }
+        // Initialize
+        logMessage('🚀 FastTyper IFrameBridge Test Page Loaded');
+        logMessage('💡 Click a test mode button to start testing');
     </script>
 </body>
 </html>

@@ -54,6 +54,38 @@ public class FusionBootstrap : MonoBehaviour
             Debug.Log("Fusion started successfully.");
         }
     }
+
+    // Method called by IFrameBridge for multiplayer mode
+    public async void StartMultiplayerGame(string matchId)
+    {
+        Debug.Log($"[FusionBootstrap] Starting multiplayer game with match ID: {matchId}");
+        
+        try
+        {
+            await StartShared(matchId);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[FusionBootstrap] Failed to start multiplayer game: {e.Message}");
+            
+            // Notify IFrameBridge of the failure
+            if (IFrameBridge.Instance != null)
+            {
+                IFrameBridge.Instance.AbortGameStartFailure($"Failed to start multiplayer: {e.Message}");
+            }
+        }
+    }
+
+    // Method called by IFrameBridge when player wants to leave
+    public void DisconnectFromGame()
+    {
+        Debug.Log("[FusionBootstrap] Disconnecting from multiplayer game");
+        
+        if (runner != null && runner.IsRunning)
+        {
+            runner.Shutdown();
+        }
+    }
 }
 
 public sealed class RunnerCallbacks : INetworkRunnerCallbacks
@@ -84,8 +116,13 @@ public sealed class RunnerCallbacks : INetworkRunnerCallbacks
 
         if (runner.ActivePlayers.Count() >= 2)
         {
-            Debug.Log("2 players joined → Starting game!");
-            UIManager.Instance.MultiplayerGameStart();
+            Debug.Log("2 players joined → Starting countdown!");
+            // Start the countdown when both players are ready
+            if (UIManager.Instance != null)
+            {
+                UIManager.Instance.IsCountDownStart = true;
+                UIManager.Instance.StartCoroutine(UIManager.Instance.StartCountdown_Animation());
+            }
         }
     }
 

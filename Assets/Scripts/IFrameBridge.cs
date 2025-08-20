@@ -89,9 +89,9 @@ public class IFrameBridge : MonoBehaviour
 
             ExtractParametersFromURL();
 #else
-            // In Unity Editor or Windows build, start with multiplayer test mode
+            // In Unity Editor or Windows build, start with AI test mode
             Debug.Log(
-                "[IFrameBridge] Editor/Build mode - starting with multiplayer test parameters"
+                "[IFrameBridge] Editor/Build mode - starting with AI test parameters"
             );
             ExtractParametersFromURL();
 #endif
@@ -117,11 +117,10 @@ public class IFrameBridge : MonoBehaviour
 #else
             // Use test data in editor - CHOOSE MODE HERE:
             // FOR AI MODE TESTING (uncomment this line):
-            string json = "{\"matchId\":\"test_match\",\"playerId\":\"human_player\",\"opponentId\":\"a912345678\"}";
+       //     string json = "{\"matchId\":\"test_match\",\"playerId\":\"human_player\",\"opponentId\":\"a912345678\"}";
 
             //FOR MULTIPLAYER MODE TESTING (comment out the line above and uncomment this line):
-         //   string json =
-          //     "{\"matchId\":\"test_match\",\"playerId\":\"player1\",\"opponentId\":\"player2\"}";
+             string json = "{\"matchId\":\"test_match\",\"playerId\":\"player1\",\"opponentId\":\"player2\"}";
 
             InitParamsFromJS(json);
 #endif
@@ -296,15 +295,8 @@ public class IFrameBridge : MonoBehaviour
 
         if (UIManager.Instance != null)
         {
-            UIManager.Instance.currentGameMode = GAMEMODE.SinglePlayer;
-            if (botLevel == GAMETYPE.Easy)
-            {
-                UIManager.Instance.OnClickEasy();
-            }
-            else
-            {
-                UIManager.Instance.OnClickHard();
-            }
+            // Use the new AutoStartGame method to bypass selection screens
+            UIManager.Instance.AutoStartGame(GAMEMODE.SinglePlayer, botLevel);
         }
         else
         {
@@ -317,11 +309,20 @@ public class IFrameBridge : MonoBehaviour
     {
         Debug.Log("[IFrameBridge] Initializing Multiplayer Mode...");
 
-        Debug.LogError("[IFrameBridge] Multiplayer mode not available in this build (Fusion not present)");
-        AbortGameStartFailure("Multiplayer not supported in this build");
+        if (FusionBootstrap.Instance != null)
+        {
+            // Use the new AutoStartGame method to bypass selection screens
+            UIManager.Instance.AutoStartGame(GAMEMODE.MultiPlayer);
+            
+            // Start Fusion networking - this will be handled by the countdown system
+            // The actual game start will happen when countdown completes
+        }
+        else
+        {
+            Debug.LogError("[IFrameBridge] FusionBootstrap not found for multiplayer mode!");
+            AbortGameStartFailure("FusionBootstrap not found for multiplayer mode");
+        }
     }
-
-    
 
     public bool IsBot(string playerId)
     {
@@ -474,15 +475,15 @@ public class IFrameBridge : MonoBehaviour
         PostMatchAbort($"Player {playerId} disconnected", "Player disconnected", "PLAYER_DISCONNECT");
     }
 
-    // Handle opponent forfeit scenario - using Maze-Muncher's simple approach
+    // Handle opponent forfeit scenario
     public void PostOpponentForfeit(string opponentId)
     {
         Debug.Log($"[IFrameBridge] Opponent {opponentId} forfeited the match");
         
-        // Use the same simple approach as Maze-Muncher
+        // Use simple approach
         PostMatchAbort("Opponent left the game.", "", "");
         
-        // Also send match result with "won" (like Maze-Muncher)
+        // Also send match result with "won"
         int myScore = UIManager.Instance != null ? UIManager.Instance.totalScore : 0;
         int opponentScore = UIManager.Instance != null ? UIManager.Instance.aiScore : 0;
         PostMatchResult("won", myScore, opponentScore);
@@ -493,7 +494,7 @@ public class IFrameBridge : MonoBehaviour
     {
         Debug.Log("[IFrameBridge] Local player forfeited the match");
         
-        // Use simple approach like Maze-Muncher
+        // Use simple approach
         PostMatchAbort("You left the game.", "", "");
     }
 
@@ -564,7 +565,11 @@ public class IFrameBridge : MonoBehaviour
         // Send forfeit message to platform
         PostPlayerForfeit();
         
-        // If multiplayer were active, we'd disconnect here (not available in this build)
+        // Disconnect from network if in multiplayer
+        if (gameType == GameType.Multiplayer && FusionBootstrap.Instance != null)
+        {
+            FusionBootstrap.Instance.DisconnectFromGame();
+        }
         
         // Stop or reset the game via UI
         if (UIManager.Instance != null)

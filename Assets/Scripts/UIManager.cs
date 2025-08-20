@@ -102,6 +102,52 @@ public class UIManager : MonoBehaviour
         
     }
 
+    // New method called by IFrameBridge to automatically start the game
+    public void AutoStartGame(GAMEMODE gameMode, GAMETYPE aiType = GAMETYPE.Easy)
+    {
+        Debug.Log($"[UIManager] Auto-starting game - Mode: {gameMode}, AI Type: {aiType}");
+        
+        // Set the game mode and AI type
+        currentGameMode = gameMode;
+        currentAITypes = aiType;
+        
+        // Hide all selection screens
+        if (selectModeScreen != null)
+            selectModeScreen.SetActive(false);
+        if (selectTypeScreen != null)
+            selectTypeScreen.SetActive(false);
+        
+        // For multiplayer mode, start Fusion networking and show waiting screen
+        if (gameMode == GAMEMODE.MultiPlayer)
+        {
+            if (FusionBootstrap.Instance != null)
+            {
+                // Start Fusion networking with the match ID from IFrameBridge
+                string matchId = IFrameBridge.MatchId;
+                FusionBootstrap.Instance.StartMultiplayerGame(matchId);
+            }
+            else
+            {
+                Debug.LogError("[UIManager] FusionBootstrap not found for multiplayer mode!");
+            }
+            
+            // Show waiting screen for multiplayer
+            countdownScreen.SetActive(true);
+            countdownText.text = "Waiting...opponent";
+            countdownText.gameObject.GetComponent<CanvasGroup>().alpha = 1;
+            countdownText.gameObject.transform.localScale = Vector3.one;
+        }
+        else
+        {
+            // For AI mode, start countdown immediately
+            IsCountDownStart = true;
+            countdownScreen.SetActive(true);
+            StartCoroutine(StartCountdown_Animation());
+        }
+        
+        Debug.Log($"[UIManager] Game auto-started successfully - Mode: {gameMode}, AI Type: {aiType}");
+    }
+
     void Update()
     {
         if (timerRunning)
@@ -626,16 +672,34 @@ public class UIManager : MonoBehaviour
             {
                 resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = winSprite;
+                
+                // Notify platform of AI mode victory
+                if (IFrameBridge.Instance != null)
+                {
+                    IFrameBridge.Instance.PostMatchResult("won", totalScore, aiScore);
+                }
             }
             else if (totalScore < aiScore)
             {
                 resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = loseSprite;
+                
+                // Notify platform of AI mode loss
+                if (IFrameBridge.Instance != null)
+                {
+                    IFrameBridge.Instance.PostMatchResult("lost", totalScore, aiScore);
+                }
             }
             else
             {
                 resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
                 resultImage.sprite = drawSprite;
+                
+                // Notify platform of AI mode draw
+                if (IFrameBridge.Instance != null)
+                {
+                    IFrameBridge.Instance.PostMatchResult("draw", totalScore, aiScore);
+                }
             }
         }
         else if (currentGameMode == GAMEMODE.MultiPlayer)
@@ -930,7 +994,7 @@ public class UIManager : MonoBehaviour
     [Header("Countdown")]
     public TextMeshProUGUI countdownText;
     public Image countFillImage;
-    private bool IsCountDownStart = false;
+    public bool IsCountDownStart = false;
 
     public IEnumerator StartCountdown_Animation()
     {
