@@ -93,18 +93,70 @@ public sealed class RunnerCallbacks : INetworkRunnerCallbacks
     public void OnPlayerLeft(NetworkRunner runner, PlayerRef player) 
     {
         Debug.Log($"Player left: {player}");
+        
         // Find their player object
         if (runner.TryGetPlayerObject(player, out NetworkObject playerObj))
         {
             runner.Despawn(playerObj);
             Debug.Log("Player object despawned.");
         }
+        
+        // Check if this is during an active multiplayer game
+        if (UIManager.Instance != null && UIManager.Instance.currentGameMode == GAMEMODE.MultiPlayer)
+        {
+            // Check if the game is currently running (not in menu or game over screen)
+            bool isGameActive = UIManager.Instance.gamePlayScreen.activeSelf;
+            
+            if (isGameActive)
+            {
+                Debug.Log($"Player {player.PlayerId} left during active game - triggering win for remaining player");
+                
+                // Notify the remaining player they won due to opponent leaving
+                UIManager.Instance.HandleOpponentDisconnect(player.PlayerId);
+                
+                // Also notify platform about opponent forfeit
+                if (IFrameBridge.Instance != null)
+                {
+                    IFrameBridge.Instance.PostOpponentForfeit(player.PlayerId.ToString());
+                }
+            }
+        }
     }
     public void OnInput(NetworkRunner runner, NetworkInput input) { }
     public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
-    public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason) { }
+    public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason) 
+    {
+        Debug.Log($"Network runner shutdown: {shutdownReason}");
+        
+        // If we were in a multiplayer game, handle the shutdown
+        if (UIManager.Instance != null && UIManager.Instance.currentGameMode == GAMEMODE.MultiPlayer)
+        {
+            bool isGameActive = UIManager.Instance.gamePlayScreen.activeSelf;
+            
+            if (isGameActive)
+            {
+                Debug.Log("Network shutdown during active multiplayer game");
+                UIManager.Instance.HandleLocalPlayerLeave();
+            }
+        }
+    }
     public void OnConnectedToServer(NetworkRunner runner) { }
-    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
+    public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) 
+    {
+        Debug.Log($"Disconnected from server: {reason}");
+        
+        // If we were in a multiplayer game, handle the disconnection
+        if (UIManager.Instance != null && UIManager.Instance.currentGameMode == GAMEMODE.MultiPlayer)
+        {
+            bool isGameActive = UIManager.Instance.gamePlayScreen.activeSelf;
+            
+            if (isGameActive)
+            {
+                Debug.Log("Connection lost during active multiplayer game");
+                UIManager.Instance.HandleLocalPlayerLeave();
+            }
+        }
+    }
     public void OnConnectRequest(NetworkRunner runner, NetworkRunnerCallbackArgs.ConnectRequest request, byte[] token) { }
     public void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason) { }
     public void OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message) { }

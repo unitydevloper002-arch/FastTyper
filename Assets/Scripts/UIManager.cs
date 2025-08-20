@@ -175,7 +175,7 @@ public class UIManager : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             // Generate random length for each word (3–8 letters)
-            int length = rand.Next(3, 9);
+            int length = rand.Next(3, 6);
             string word = GenerateRandomWord_Multiplayer(length, rand);
             allWords.Add(word);
         }
@@ -638,6 +638,43 @@ public class UIManager : MonoBehaviour
                 resultImage.sprite = drawSprite;
             }
         }
+        else if (currentGameMode == GAMEMODE.MultiPlayer)
+        {
+            // Multiplayer game over - compare player vs opponent scores
+            if (totalScore > aiScore)
+            {
+                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
+                resultImage.sprite = winSprite;
+                
+                // Notify platform of victory
+                if (IFrameBridge.Instance != null)
+                {
+                    IFrameBridge.Instance.PostMatchResult("won", totalScore, aiScore);
+                }
+            }
+            else if (totalScore < aiScore)
+            {
+                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
+                resultImage.sprite = loseSprite;
+                
+                // Notify platform of loss
+                if (IFrameBridge.Instance != null)
+                {
+                    IFrameBridge.Instance.PostMatchResult("lost", totalScore, aiScore);
+                }
+            }
+            else
+            {
+                resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
+                resultImage.sprite = drawSprite;
+                
+                // Notify platform of draw
+                if (IFrameBridge.Instance != null)
+                {
+                    IFrameBridge.Instance.PostMatchResult("draw", totalScore, aiScore);
+                }
+            }
+        }
     }
 
     public void RestartGame()
@@ -686,6 +723,19 @@ public class UIManager : MonoBehaviour
         countdownText.gameObject.transform.localScale = Vector3.zero;
 
         resultImage.transform.localScale = Vector3.zero;
+    }
+
+    // Method to handle when player wants to leave the game during multiplayer
+    public void LeaveGame()
+    {
+        if (currentGameMode == GAMEMODE.MultiPlayer && timerRunning)
+        {
+            HandleLocalPlayerLeave();
+        }
+        else
+        {
+            RestartGame();
+        }
     }
 
     private void ClearAllWordItems()
@@ -947,6 +997,70 @@ public class UIManager : MonoBehaviour
     {
         IsCountDownStart = true;
         StartCoroutine(StartCountdown_Animation());
+    }
+
+    public void HandleOpponentDisconnect(int disconnectedPlayerId)
+    {
+        Debug.Log($"Handling opponent disconnect: Player {disconnectedPlayerId} left the game");
+        
+        // Stop the timer and game immediately
+        timerRunning = false;
+        StopAllCoroutines();
+        
+        // Clear input field
+        if (inputField != null)
+        {
+            inputField.onValueChanged.RemoveListener(OnTyping);
+            inputField.text = string.Empty;
+        }
+        
+        // Show game over screen with win result
+        if (gameOverScreen != null)
+            gameOverScreen.SetActive(true);
+            
+        // Display win sprite since opponent left
+        if (resultImage != null)
+        {
+            resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
+            resultImage.sprite = winSprite;
+        }
+        
+        Debug.Log("Player wins due to opponent disconnection - displaying win screen");
+    }
+
+    public void HandleLocalPlayerLeave()
+    {
+        Debug.Log("Local player is leaving the game");
+        
+        // Stop the timer and game immediately
+        timerRunning = false;
+        StopAllCoroutines();
+        
+        // Clear input field
+        if (inputField != null)
+        {
+            inputField.onValueChanged.RemoveListener(OnTyping);
+            inputField.text = string.Empty;
+        }
+        
+        // Show game over screen with lose result (since we're leaving)
+        if (gameOverScreen != null)
+            gameOverScreen.SetActive(true);
+            
+        // Display lose sprite since we left
+        if (resultImage != null)
+        {
+            resultImage.transform.DOScale(Vector3.one, 0.5f).SetEase(Ease.Linear);
+            resultImage.sprite = loseSprite;
+        }
+        
+        // Notify platform that local player forfeited
+        if (IFrameBridge.Instance != null)
+        {
+            IFrameBridge.Instance.PostPlayerForfeit();
+        }
+        
+        Debug.Log("Local player left - displaying lose screen");
     }
 
     #endregion
