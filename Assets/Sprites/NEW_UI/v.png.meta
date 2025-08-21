@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: 6f3919d14da03de47b400fdbd90e5365
+guid: cece1625cbf5b684fb94609439904c96
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -6476695440538410212
-    second: OPPONENT (SCORE)_0
+      213: -4534634967793127557
+    second: v_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -126,13 +126,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: OPPONENT (SCORE)_0
+      name: v_0
       rect:
         serializedVersion: 2
         x: 0
         y: 0
-        width: 879
-        height: 212
+        width: 1559
+        height: 1868
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -141,8 +141,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: c13e054dfc72e16a0800000000000000
-      internalID: -6476695440538410212
+      spriteID: b7f20a6b58db111c0800000000000000
+      internalID: -4534634967793127557
       vertices: []
       indices: 
       edges: []
@@ -161,7 +161,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      OPPONENT (SCORE)_0: -6476695440538410212
+      v_0: -4534634967793127557
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

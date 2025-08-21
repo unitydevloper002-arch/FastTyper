@@ -43,7 +43,7 @@ public class UIManager : MonoBehaviour
 
     [Header("GamePlay_Area")]
     public TextMeshProUGUI timerText;
-    private float timeRemaining = 300f;
+    private float timeRemaining = 90f;
     private bool timerRunning = false;
     private double endTime; // UTC timestamp when timer should finish
 
@@ -196,14 +196,16 @@ public class UIManager : MonoBehaviour
             }
         }
 
-        // Click anywhere to refocus invisible input for typing
-        if (inputField != null && gamePlayScreen != null && gamePlayScreen.activeInHierarchy)
-        {
-            if (Input.GetMouseButtonDown(0) || Input.touchCount > 0)
-            {
-                EnsureInputFocus();
-            }
-        }
+		// Click anywhere to refocus invisible input for typing (PC only)
+		if (inputField != null && gamePlayScreen != null && gamePlayScreen.activeInHierarchy)
+		{
+			bool isMobile = Application.isMobilePlatform || (IFrameBridge.Instance != null && IFrameBridge.Instance.IsMobileWebGL());
+			
+			if (!isMobile && (Input.GetMouseButtonDown(0) || Input.touchCount > 0))
+			{
+				EnsureInputFocus();
+			}
+		}
 
         RunFillImage();
         RunGameFillImage();
@@ -225,7 +227,7 @@ public class UIManager : MonoBehaviour
 
     public void StartGame()
     {
-		timeRemaining = 300f;
+		timeRemaining = 90f;
 		endTime = GetUnixTimeNow() + timeRemaining;
 		timerRunning = true;
 
@@ -234,6 +236,19 @@ public class UIManager : MonoBehaviour
 			inputField.onValueChanged.AddListener(OnTyping);
 			HideInputFieldVisuals();
 			EnsureInputFocus();
+			
+			// Prevent device keyboard on mobile
+			if (Application.isMobilePlatform || (IFrameBridge.Instance != null && IFrameBridge.Instance.IsMobileWebGL()))
+			{
+				inputField.shouldHideMobileInput = true;
+				inputField.readOnly = true;
+				inputField.interactable = false; // Completely disable interaction
+				// Force hide any open keyboard
+				if (TouchScreenKeyboard.isSupported)
+				{
+					TouchScreenKeyboard.hideInput = true;
+				}
+			}
 		}
 
 		// 1) Load words from file (if enabled) directly into allWords
@@ -266,6 +281,12 @@ public class UIManager : MonoBehaviour
 			{
 				FusionBridge.Instance.StartMultiplayerGame();
 			}
+		}
+
+		// Force show keyboard when gameplay starts
+		if (KeyboardManager.Instance != null)
+		{
+			KeyboardManager.Instance.ForceShowKeyboard();
 		}
     }
 
@@ -544,7 +565,7 @@ public class UIManager : MonoBehaviour
             gameHighLightImageAI.sprite = correctHighlightSprite;
             center.GetChild(1).gameObject.SetActive(true);
             center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
-            if (aiScoreText != null) aiScoreText.text = aiScore.ToString();
+            if (aiScoreText != null) aiScoreText.text = FormatScoreWithSpaces(aiScore);
         }
         else
         {
@@ -554,7 +575,7 @@ public class UIManager : MonoBehaviour
             gameHighLightImageAI.sprite = wrongHighlightSprite;
             center.GetChild(1).gameObject.SetActive(true);
             center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
-            if (aiScoreText != null) aiScoreText.text = aiScore.ToString();
+            if (aiScoreText != null) aiScoreText.text = FormatScoreWithSpaces(aiScore);
         }
 
         // Advance one word (mirror the player shift)
@@ -718,12 +739,12 @@ public class UIManager : MonoBehaviour
         totalScore = 0;
         aiScore = 0;
         if (scoreText != null)
-            scoreText.text = "0";
+            scoreText.text = FormatScoreWithSpaces(0);
         if (aiScoreText != null)
-            aiScoreText.text = "0";
+            aiScoreText.text = FormatScoreWithSpaces(0);
 
         // Reset timer
-        timeRemaining = 300f;
+        timeRemaining = 90f;
         endTime = GetUnixTimeNow() + timeRemaining;
         timerRunning = false;
 
@@ -796,7 +817,7 @@ public class UIManager : MonoBehaviour
         if (totalScore < 0) totalScore = 0;
         if (scoreText != null)
         {
-            scoreText.text = totalScore.ToString();
+            scoreText.text = FormatScoreWithSpaces(totalScore);
         }
     }
 
@@ -971,7 +992,7 @@ public class UIManager : MonoBehaviour
                 gameHighLightImageAI.sprite = correctHighlightSprite;
                 center.GetChild(1).gameObject.SetActive(true);
                 center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
-                if (aiScoreText != null) aiScoreText.text = aiScore.ToString();
+                if (aiScoreText != null) aiScoreText.text = FormatScoreWithSpaces(aiScore);
             }
             else
             {
@@ -981,7 +1002,7 @@ public class UIManager : MonoBehaviour
                 gameHighLightImageAI.sprite = wrongHighlightSprite;
                 center.GetChild(1).gameObject.SetActive(true);
                 center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
-                if (aiScoreText != null) aiScoreText.text = aiScore.ToString();
+                if (aiScoreText != null) aiScoreText.text = FormatScoreWithSpaces(aiScore);
             }
 
             // Advance one word (mirror the player shift)
@@ -1194,6 +1215,56 @@ public class UIManager : MonoBehaviour
 		cg.alpha = 0f;
 		cg.blocksRaycasts = false; // clicks pass through
 		cg.interactable = true;    // still receives keyboard input when focused
+	}
+
+	// ===== On-screen keyboard input API =====
+	public void KeyboardAppend(string key)
+	{
+		if (inputField == null) return;
+		if (Time.unscaledTime < typingLockUntil) return;
+		if (string.IsNullOrEmpty(key)) return;
+		inputField.text = (inputField.text ?? string.Empty) + key;
+		inputField.caretPosition = inputField.text.Length;
+		EnsureInputFocus();
+	}
+
+	public void KeyboardBackspace()
+	{
+		if (inputField == null) return;
+		if (Time.unscaledTime < typingLockUntil) return;
+		string t = inputField.text ?? string.Empty;
+		if (t.Length > 0)
+		{
+			inputField.text = t.Substring(0, t.Length - 1);
+			inputField.caretPosition = inputField.text.Length;
+		}
+		EnsureInputFocus();
+	}
+
+	public void KeyboardSpace()
+	{
+		if (inputField == null) return;
+		if (Time.unscaledTime < typingLockUntil) return;
+		// If the word is already judged, commit; else ignore space to avoid accidental wrong
+		if (currentWordCompleted || currentWordFailed)
+		{
+			CommitCurrentWord();
+		}
+	}
+
+	public void KeyboardEnter()
+	{
+		KeyboardSpace();
+	}
+
+	private string FormatScoreWithSpaces(int value)
+	{
+		int clamped = value < 0 ? 0 : (value > 9999 ? 9999 : value);
+		string s = clamped.ToString("D4");
+		// 0<space=0.6em>0<space=0.9em>0<space=0.6em>0
+		return string.Concat(
+			s[0], "<space=0.6em>", s[1], "<space=0.9em>", s[2], "<space=0.6em>", s[3]
+		);
 	}
 
 }
