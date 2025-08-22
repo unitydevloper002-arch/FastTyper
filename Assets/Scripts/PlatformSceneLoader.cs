@@ -19,6 +19,19 @@ public class PlatformSceneLoader : MonoBehaviour
             Screen.autorotateToLandscapeRight = false;
             Screen.autorotateToPortrait = true;
             Screen.autorotateToPortraitUpsideDown = true;
+#elif UNITY_WEBGL
+        // WebGL: Desktop browser -> Scene1, Mobile browser -> Scene2
+        // Avoid misclassifying touch-enabled laptops by NOT using Input.touchSupported
+        bool isMobileBrowser = Application.isMobilePlatform || SystemInfo.deviceType == DeviceType.Handheld;
+        if (isMobileBrowser)
+        {
+            SceneManager.LoadScene(2);
+            // Note: Screen.orientation has no effect on WebGL; handled by browser/device.
+        }
+        else
+        {
+            SceneManager.LoadScene(1);
+        }
 #endif
     }
 }

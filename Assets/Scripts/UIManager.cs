@@ -73,6 +73,7 @@ public class UIManager : MonoBehaviour
     private bool currentWordFailed = false;
     private bool currentWordCompleted = false;
     private float typingLockUntil = 0f;
+    private bool autoCommitScheduled = false; // Prevent multiple auto-commits for same word
 
     [Header("Score")]
     public TextMeshProUGUI scoreText;
@@ -520,7 +521,7 @@ public class UIManager : MonoBehaviour
                 // Lock typing for 0.5s until commit
                 typingLockUntil = Time.unscaledTime + 0.5f;
                 if (inputField != null) inputField.readOnly = true;
-                AutoCommit();
+                if (!autoCommitScheduled) AutoCommit();
                 return;
             }
         }
@@ -544,7 +545,8 @@ public class UIManager : MonoBehaviour
             // Lock typing for 0.5s until commit
             typingLockUntil = Time.unscaledTime + 0.5f;
             if (inputField != null) inputField.readOnly = true;
-            AutoCommit();
+            // Only auto-commit if not already scheduled
+            if (!autoCommitScheduled) AutoCommit();
         }
     }
 
@@ -606,10 +608,15 @@ public class UIManager : MonoBehaviour
             inputField.readOnly = false;
             EnsureInputFocus();
         }
+        autoCommitScheduled = false; // Reset the flag after commit
     }
 
     private void AutoCommit()
     {
+        // Prevent multiple auto-commits for the same word
+        if (autoCommitScheduled) return;
+        autoCommitScheduled = true;
+        
         // Delay by one frame to allow the colored state to render, then commit automatically
         StartCoroutine(AutoCommitNextFrame());
     }
@@ -1266,5 +1273,4 @@ public class UIManager : MonoBehaviour
 			s[0], "<space=0.6em>", s[1], "<space=0.9em>", s[2], "<space=0.6em>", s[3]
 		);
 	}
-
 }
