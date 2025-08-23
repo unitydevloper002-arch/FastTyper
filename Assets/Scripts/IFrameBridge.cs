@@ -157,11 +157,11 @@ public class IFrameBridge : MonoBehaviour
         // CHOOSE ONE MODE FOR TESTING:
 
         // 1. FOR AI MODE TESTING (default):
-        string json =
-            "{\"matchId\":\"test_match\",\"playerId\":\"human_player\",\"opponentId\":\"b912345678\"}";
+      //  string json =
+      //      "{\"matchId\":\"test_match\",\"playerId\":\"human_player\",\"opponentId\":\"b912345678\"}";
 
         // 2. FOR MULTIPLAYER MODE TESTING (uncomment this line and comment out the line above):
-        // string json = "{\"matchId\":\"test_match\",\"playerId\":\"player1\",\"opponentId\":\"player2\"}";
+         string json = "{\"matchId\":\"test_match\",\"playerId\":\"player1\",\"opponentId\":\"player2\"}";
 
         IFrameBridge.Instance.InitParamsFromJS(json);
     }

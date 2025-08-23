@@ -228,6 +228,12 @@ public class UIManager : MonoBehaviour
 
     public void StartGame()
     {
+		// Reset handshake state for new game
+		if (HandshakeManager.Instance != null)
+		{
+			HandshakeManager.Instance.ResetHandshakeState();
+		}
+
 		timeRemaining = 90f;
 		endTime = GetUnixTimeNow() + timeRemaining;
 		timerRunning = true;
@@ -657,43 +663,37 @@ public class UIManager : MonoBehaviour
             inputField.text = string.Empty;
         }
 
+        // Start handshake sequence using HandshakeManager
+        StartHandshakeSequence();
+    }
+
+    // Updated method to use HandshakeManager
+    private void StartHandshakeSequence()
+    {
+        // Determine game result locally first
+        string outcome = "draw";
+        int playerScore = totalScore;
+        int opponentScore = aiScore;
+        
         if (currentGameMode == GAMEMODE.SinglePlayer)
         {
             if (totalScore > aiScore)
             {
                 resultImage.sprite = winSprite;
-                
-                // Notify platform of AI mode victory
-                if (IFrameBridge.Instance != null)
-                {
-                    IFrameBridge.Instance.PostMatchResult("won", totalScore, aiScore);
-                    player_Score.text = totalScore.ToString();
-                    opponent_Score.text = aiScore.ToString();
-                }
+                outcome = "won";
+                Debug.Log("[UIManager] AI Mode - Player WINS");
             }
             else if (totalScore < aiScore)
             {
                 resultImage.sprite = loseSprite;
-                
-                // Notify platform of AI mode loss
-                if (IFrameBridge.Instance != null)
-                {
-                    IFrameBridge.Instance.PostMatchResult("lost", totalScore, aiScore);
-                    player_Score.text = totalScore.ToString();
-                    opponent_Score.text = aiScore.ToString();
-                }
+                outcome = "lost";
+                Debug.Log("[UIManager] AI Mode - Player LOSES");
             }
             else
             {
                 resultImage.sprite = drawSprite;
-                
-                // Notify platform of AI mode draw
-                if (IFrameBridge.Instance != null)
-                {
-                    IFrameBridge.Instance.PostMatchResult("draw", totalScore, aiScore);
-                    player_Score.text = totalScore.ToString();
-                    opponent_Score.text = aiScore.ToString();
-                }
+                outcome = "draw";
+                Debug.Log("[UIManager] AI Mode - DRAW");
             }
         }
         else if (currentGameMode == GAMEMODE.MultiPlayer)
@@ -702,44 +702,59 @@ public class UIManager : MonoBehaviour
             if (totalScore > aiScore)
             {
                 resultImage.sprite = winSprite;
-                
-                // Notify platform of victory
-                if (IFrameBridge.Instance != null)
-                {
-                    IFrameBridge.Instance.PostMatchResult("won", totalScore, aiScore);
-                    player_Score.text = totalScore.ToString();
-                    opponent_Score.text = aiScore.ToString();
-                }
+                outcome = "won";
+                Debug.Log("[UIManager] Multiplayer Mode - Player WINS");
             }
             else if (totalScore < aiScore)
             {
                 resultImage.sprite = loseSprite;
-                
-                // Notify platform of loss
-                if (IFrameBridge.Instance != null)
-                {
-                    IFrameBridge.Instance.PostMatchResult("lost", totalScore, aiScore);
-                    player_Score.text = totalScore.ToString();
-                    opponent_Score.text = aiScore.ToString();
-                }
+                outcome = "lost";
+                Debug.Log("[UIManager] Multiplayer Mode - Player LOSES");
             }
             else
             {
                 resultImage.sprite = drawSprite;
-                
-                // Notify platform of draw
-                if (IFrameBridge.Instance != null)
-                {
-                    IFrameBridge.Instance.PostMatchResult("draw", totalScore, aiScore);
-                    player_Score.text = totalScore.ToString();
-                    opponent_Score.text = aiScore.ToString();
-                }
+                outcome = "draw";
+                Debug.Log("[UIManager] Multiplayer Mode - DRAW");
+            }
+        }
+
+        // Update UI scores
+        player_Score.text = totalScore.ToString();
+        opponent_Score.text = aiScore.ToString();
+
+        // Start handshake sequence using HandshakeManager
+        if (HandshakeManager.Instance != null)
+        {
+            HandshakeManager.Instance.StartHandshakeSequence(outcome, playerScore, opponentScore);
+        }
+        else
+        {
+            Debug.LogError("[UIManager] HandshakeManager not found! Creating one...");
+            
+            // Create HandshakeManager if it doesn't exist
+            GameObject handshakeObj = new GameObject("HandshakeManager");
+            handshakeObj.AddComponent<HandshakeManager>();
+            
+            // Try to start handshake again
+            if (HandshakeManager.Instance != null)
+            {
+                HandshakeManager.Instance.StartHandshakeSequence(outcome, playerScore, opponentScore);
+            }
+            else
+            {
+                Debug.LogError("[UIManager] Failed to create HandshakeManager!");
             }
         }
     }
 
     public void RestartGame()
     {
+        // Reset handshake state for new game
+        if (HandshakeManager.Instance != null)
+        {
+            HandshakeManager.Instance.ResetHandshakeState();
+        }
 
         gamePlayScreen.SetActive(false);
         // Reset scores
@@ -1273,4 +1288,41 @@ public class UIManager : MonoBehaviour
 			s[0], "<space=0.6em>", s[1], "<space=0.9em>", s[2], "<space=0.6em>", s[3]
 		);
 	}
+
+    // Method to check and display handshake status (for debugging)
+    public void CheckHandshakeStatus()
+    {
+        if (HandshakeManager.Instance != null)
+        {
+            bool inProgress = HandshakeManager.Instance.IsHandshakeInProgress();
+            bool completed = HandshakeManager.Instance.IsHandshakeCompleted();
+            float progress = HandshakeManager.Instance.GetHandshakeProgress();
+            
+            Debug.Log($"[UIManager] Handshake Status - InProgress: {inProgress}, Completed: {completed}, Progress: {progress:F2}");
+            
+            // You can also display this in UI if needed
+            if (timerText != null && inProgress)
+            {
+                timerText.text = $"Handshake: {(progress * 100):F0}%";
+            }
+        }
+        else
+        {
+            Debug.LogWarning("[UIManager] HandshakeManager not found!");
+        }
+    }
+
+    // Method to force complete handshake if needed (for debugging)
+    public void ForceCompleteHandshake()
+    {
+        if (HandshakeManager.Instance != null)
+        {
+            HandshakeManager.Instance.ForceCompleteHandshake();
+            Debug.Log("[UIManager] Handshake force completed");
+        }
+        else
+        {
+            Debug.LogWarning("[UIManager] HandshakeManager not found!");
+        }
+    }
 }
