@@ -43,7 +43,7 @@ public class UIManager : MonoBehaviour
 
     [Header("GamePlay_Area")]
     public TextMeshProUGUI timerText;
-    private float timeRemaining = 90f;
+    private float timeRemaining = 300f;
     private bool timerRunning = false;
     private double endTime; // UTC timestamp when timer should finish
 
@@ -80,6 +80,16 @@ public class UIManager : MonoBehaviour
     public int totalScore = 0;
     public TextMeshProUGUI aiScoreText;
     public int aiScore = 0;
+
+    // Tracking variables for statistics
+    private int totalWordsTyped = 0;
+    private int totalWordsCorrect = 0;
+    private int totalLettersTyped = 0;
+    private float gameStartTime = 0f;
+    
+    private int aiTotalWordsTyped = 0;
+    private int aiTotalWordsCorrect = 0;
+    private int aiTotalLettersTyped = 0;
 
     [Header("AI Settings")]
     public Vector2 easyDelayRange = new Vector2(1.8f, 2.8f); // seconds per word (slower)
@@ -234,7 +244,17 @@ public class UIManager : MonoBehaviour
 			HandshakeManager.Instance.ResetHandshakeState();
 		}
 
-		timeRemaining = 90f;
+		// Reset statistics
+		totalWordsTyped = 0;
+		totalWordsCorrect = 0;
+		totalLettersTyped = 0;
+		gameStartTime = Time.time;
+		
+		aiTotalWordsTyped = 0;
+		aiTotalWordsCorrect = 0;
+		aiTotalLettersTyped = 0;
+
+		timeRemaining = 300f;
 		endTime = GetUnixTimeNow() + timeRemaining;
 		timerRunning = true;
 
@@ -515,6 +535,11 @@ public class UIManager : MonoBehaviour
                 tmp.text = $"<color=red>{original}</color>";
                 currentWordFailed = true;
                 AddScore(-1);
+                
+                // Track statistics for incorrect word
+                totalWordsTyped++;
+                totalLettersTyped += i; // Count letters typed before mistake
+                
                 center.GetChild(1).gameObject.SetActive(true);
                 center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
                 gameHighLightImage.sprite = wrongHighlightSprite;
@@ -538,6 +563,12 @@ public class UIManager : MonoBehaviour
         {
             tmp.text = $"<color=green>{original}</color>";
             AddScore(+1);
+            
+            // Track statistics for correct word
+            totalWordsTyped++;
+            totalWordsCorrect++;
+            totalLettersTyped += original.Length;
+            
             center.GetChild(1).gameObject.SetActive(true);
             center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
             gameHighLightImage.sprite = correctHighlightSprite;
@@ -570,6 +601,12 @@ public class UIManager : MonoBehaviour
             // Mark green and score++
             tmp.text = $"<color=green>{original}</color>";
             aiScore++;
+            
+            // Track AI statistics for correct word
+            aiTotalWordsTyped++;
+            aiTotalWordsCorrect++;
+            aiTotalLettersTyped += original.Length;
+            
             gameHighLightImageAI.sprite = correctHighlightSprite;
             center.GetChild(1).gameObject.SetActive(true);
             center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
@@ -580,6 +617,11 @@ public class UIManager : MonoBehaviour
             // Mark red and score-- (floored at 0)
             tmp.text = $"<color=red>{original}</color>";
             aiScore = Mathf.Max(0, aiScore - 1);
+            
+            // Track AI statistics for incorrect word
+            aiTotalWordsTyped++;
+            aiTotalLettersTyped += original.Length; // Count all letters for AI
+            
             gameHighLightImageAI.sprite = wrongHighlightSprite;
             center.GetChild(1).gameObject.SetActive(true);
             center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
@@ -719,6 +761,9 @@ public class UIManager : MonoBehaviour
             }
         }
 
+        // Calculate final statistics
+        CalculateAndDisplayFinalStatistics();
+
         // Update UI scores
         player_Score.text = totalScore.ToString();
         opponent_Score.text = aiScore.ToString();
@@ -766,7 +811,7 @@ public class UIManager : MonoBehaviour
             aiScoreText.text = FormatScoreWithSpaces(0);
 
         // Reset timer
-        timeRemaining = 90f;
+        timeRemaining = 300f;
         endTime = GetUnixTimeNow() + timeRemaining;
         timerRunning = false;
 
@@ -929,19 +974,62 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    // Fisher–Yates shuffle for deterministic ordering
+    // Enhanced shuffle ensuring minimum 50 position distance from original
     private static void ShuffleListInPlace<T>(List<T> list, System.Random rng)
     {
         if (list == null || list.Count <= 1) return;
-        for (int i = list.Count - 1; i > 0; i--)
+        
+        // Create a copy to track original positions
+        List<T> originalList = new List<T>(list);
+        int minDistance = 50;
+        
+        // If list is too small for 50 position requirement, use regular shuffle
+        if (list.Count <= minDistance * 2)
         {
-            int j = rng.Next(i + 1);
-            if (j != i)
+            // Regular Fisher-Yates shuffle
+            for (int i = list.Count - 1; i > 0; i--)
             {
-                T tmp = list[i];
-                list[i] = list[j];
-                list[j] = tmp;
+                int j = rng.Next(i + 1);
+                if (j != i)
+                {
+                    T tmp = list[i];
+                    list[i] = list[j];
+                    list[j] = tmp;
+                }
             }
+            return;
+        }
+        
+        // Enhanced shuffle with minimum distance requirement
+        for (int i = 0; i < list.Count; i++)
+        {
+            // Find the original position of current item
+            int originalIndex = originalList.IndexOf(list[i]);
+            
+            // Calculate valid range for new position (at least 50 positions away)
+            int minNewIndex = Math.Max(0, originalIndex - minDistance);
+            int maxNewIndex = Math.Min(list.Count - 1, originalIndex + minDistance);
+            
+            // Create list of valid positions (excluding current position and positions too close)
+            List<int> validPositions = new List<int>();
+            for (int j = 0; j < list.Count; j++)
+            {
+                if (j != i && (j < minNewIndex || j > maxNewIndex))
+                {
+                    validPositions.Add(j);
+                }
+            }
+            
+            // If no valid positions found, skip this item
+            if (validPositions.Count == 0) continue;
+            
+            // Randomly select a valid position
+            int randomValidIndex = validPositions[rng.Next(validPositions.Count)];
+            
+            // Swap items
+            T temp = list[i];
+            list[i] = list[randomValidIndex];
+            list[randomValidIndex] = temp;
         }
     }
 
@@ -1011,6 +1099,12 @@ public class UIManager : MonoBehaviour
                 // Mark green and score++
                 tmp.text = $"<color=green>{original}</color>";
                 aiScore++;
+                
+                // Track AI statistics for correct word
+                aiTotalWordsTyped++;
+                aiTotalWordsCorrect++;
+                aiTotalLettersTyped += original.Length;
+                
                 gameHighLightImageAI.sprite = correctHighlightSprite;
                 center.GetChild(1).gameObject.SetActive(true);
                 center.GetChild(1).GetComponent<Image>().sprite = rightSprite;
@@ -1021,6 +1115,11 @@ public class UIManager : MonoBehaviour
                 // Mark red and score-- (floored at 0)
                 tmp.text = $"<color=red>{original}</color>";
                 aiScore = Mathf.Max(0, aiScore - 1);
+                
+                // Track AI statistics for incorrect word
+                aiTotalWordsTyped++;
+                aiTotalLettersTyped += original.Length;
+                
                 gameHighLightImageAI.sprite = wrongHighlightSprite;
                 center.GetChild(1).gameObject.SetActive(true);
                 center.GetChild(1).GetComponent<Image>().sprite = wrongSprite;
@@ -1324,5 +1423,35 @@ public class UIManager : MonoBehaviour
         {
             Debug.LogWarning("[UIManager] HandshakeManager not found!");
         }
+    }
+
+    // Calculate and display final statistics
+    private void CalculateAndDisplayFinalStatistics()
+    {
+        // Calculate player statistics
+        Player_WordTyped_Count = totalWordsTyped;
+        Player_Accuracy_Percentage = totalWordsTyped > 0 ? Mathf.RoundToInt((float)totalWordsCorrect / totalWordsTyped * 100f) : 0;
+        
+        float playerGameTime = Time.time - gameStartTime;
+        Player_lettersPerSecond_Count = playerGameTime > 0 ? Mathf.RoundToInt(totalLettersTyped / playerGameTime) : 0;
+
+        // Calculate AI/Opponent statistics
+        Opponent_WordTyped_Count = aiTotalWordsTyped;
+        Opponent_Accuracy_Percentage = aiTotalWordsTyped > 0 ? Mathf.RoundToInt((float)aiTotalWordsCorrect / aiTotalWordsTyped * 100f) : 0;
+        Opponent_lettersPerSecond_Count = playerGameTime > 0 ? Mathf.RoundToInt(aiTotalLettersTyped / playerGameTime) : 0;
+
+        // Update UI text - using your existing variables
+        if (Player_WordTyped != null)
+            Player_WordTyped.text = Player_WordTyped_Count.ToString();
+        if (Opponent_WordTyped != null)
+            Opponent_WordTyped.text = Opponent_WordTyped_Count.ToString();
+        if (Player_Accuracy != null)
+            Player_Accuracy.text = Player_Accuracy_Percentage.ToString() + "%";
+        if (Opponent_Accuracy != null)
+            Opponent_Accuracy.text = Opponent_Accuracy_Percentage.ToString() + "%";
+        if (Player_lettersPerSecond != null)
+            Player_lettersPerSecond.text = Player_lettersPerSecond_Count.ToString();
+        if (Opponent_lettersPerSecond != null)
+            Opponent_lettersPerSecond.text = Opponent_lettersPerSecond_Count.ToString();
     }
 }
