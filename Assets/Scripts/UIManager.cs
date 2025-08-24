@@ -534,6 +534,7 @@ public class UIManager : MonoBehaviour
             {
                 tmp.text = $"<color=red>{original}</color>";
                 currentWordFailed = true;
+                SoundManager.instance.WrongWord();
                 AddScore(-1);
                 
                 // Track statistics for incorrect word
@@ -562,6 +563,7 @@ public class UIManager : MonoBehaviour
         if (typedCapped.Length == original.Length)
         {
             tmp.text = $"<color=green>{original}</color>";
+            SoundManager.instance.RightWord();
             AddScore(+1);
             
             // Track statistics for correct word
@@ -1345,6 +1347,7 @@ public class UIManager : MonoBehaviour
 		if (Time.unscaledTime < typingLockUntil) return;
 		if (string.IsNullOrEmpty(key)) return;
 		inputField.text = (inputField.text ?? string.Empty) + key;
+        SoundManager.instance.KeyBoardPressKey();
 		inputField.caretPosition = inputField.text.Length;
 		EnsureInputFocus();
 	}
