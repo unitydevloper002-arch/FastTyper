@@ -74,6 +74,8 @@ public class UIManager : MonoBehaviour
     private bool currentWordCompleted = false;
     private float typingLockUntil = 0f;
     private bool autoCommitScheduled = false; // Prevent multiple auto-commits for same word
+    // Track previous input length to trigger keypress sound on any new character
+    private int previousInputLength = 0;
 
     [Header("Score")]
     public TextMeshProUGUI scoreText;
@@ -263,6 +265,7 @@ public class UIManager : MonoBehaviour
 			inputField.onValueChanged.AddListener(OnTyping);
 			HideInputFieldVisuals();
 			EnsureInputFocus();
+			previousInputLength = inputField.text != null ? inputField.text.Length : 0;
 			
 			// Prevent device keyboard on mobile
 			if (Application.isMobilePlatform || (IFrameBridge.Instance != null && IFrameBridge.Instance.IsMobileWebGL()))
@@ -500,6 +503,17 @@ public class UIManager : MonoBehaviour
     // Typing logic
     private void OnTyping(string value)
     {
+        // Play keypress sound when text length increases (covers hardware and on-screen keyboard)
+        if (Time.unscaledTime >= typingLockUntil)
+        {
+            int currentLength = value != null ? value.Length : 0;
+            if (currentLength > previousInputLength)
+            {
+                SoundManager.instance.KeyBoardPressKey();
+            }
+            previousInputLength = currentLength;
+        }
+
         if (wordItemParent == null || wordItemParent.childCount < 3) return;
         // Block typing during lock window
         if (Time.unscaledTime < typingLockUntil) return;
@@ -1347,7 +1361,6 @@ public class UIManager : MonoBehaviour
 		if (Time.unscaledTime < typingLockUntil) return;
 		if (string.IsNullOrEmpty(key)) return;
 		inputField.text = (inputField.text ?? string.Empty) + key;
-        SoundManager.instance.KeyBoardPressKey();
 		inputField.caretPosition = inputField.text.Length;
 		EnsureInputFocus();
 	}

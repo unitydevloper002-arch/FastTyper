@@ -10,10 +10,10 @@ public class HandshakeManager : MonoBehaviour
     public static HandshakeManager Instance { get; private set; }
 
     [Header("Handshake Timing")]
-    public float uiSettleDelay = 2f;           // Time to wait for UI to settle
-    public float handshakeTimeout = 5f;        // Timeout for handshake confirmation
-    public float additionalDisplayTime = 3f;   // Additional time after handshake
-    public float finalDisplayTime = 5f;        // Final display time before completion
+    public float uiSettleDelay = 5f;           // Time to wait for UI to settle
+    public float handshakeTimeout = 7f;        // Timeout for handshake confirmation
+    public float additionalDisplayTime = 5f;   // Additional time after handshake
+    public float finalDisplayTime = 7f;        // Final display time before completion
 
     [Header("Handshake State")]
     public bool isHandshakeInProgress = false;
